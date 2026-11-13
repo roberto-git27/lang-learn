@@ -1,6 +1,6 @@
 # LangLearn
 
-An AI-powered language-learning platform, currently focused on **Japanese studied from Italian**. Pick your profile and track, ask a chatbot (Claude, tool use, SSE streaming) for an exercise session; an agent picks — and generates only what is missing — a mix of exercises tuned to your history; at the end the chatbot comments on your results.
+An AI-powered language-learning platform, currently focused on **Japanese**. Pick your profile and track, ask a chatbot (Claude, tool use, SSE streaming) for an exercise session; an agent picks — and generates only what is missing — a mix of exercises tuned to your history; at the end the chatbot comments on your results.
 
 > [!WARNING]
 > **Beta, for local or trusted use only.** LangLearn is a proof of concept, not a hosted service. Read this before running it anywhere other than your own machine:
@@ -13,10 +13,10 @@ An AI-powered language-learning platform, currently focused on **Japanese studie
 
 ## Features
 
-- **Tracks** — a track is a target language studied from a base language (today: Japanese from Italian). Phrases, topics and exercises belong to one track, enforced by composite foreign keys in PostgreSQL; each track enables its own exercise types
+- **Tracks** — a track is a target language studied from a base language (e.g. Japanese from Italian). Phrases, topics and exercises belong to one track, enforced by composite foreign keys in PostgreSQL; each track enables its own exercise types
 - **Profiles** — several people can share one instance: each profile (optional 4-digit PIN) has its own tracks, history and review data. Profiles are not accounts: this is a private, single-tenant tool
 - **Negotiation chat** — SSE-streamed chatbot, with a per-track prompt and tool, that collects difficulty and topics through Anthropic tool use, starts the exercise search and gives feedback at the end of the session
-- **Exercise sessions** — a sequence of exercises with a final summary, graded client-side. Japanese track types, mostly pick-one-of-four and never requiring a Japanese keyboard: `kanji_reading` (学生 → がくせい), `kanji_writing` (がっこう → 学校), `multiple_choice`, `fill_blank`, plus at most two typed answers per session — `romaji_input` (山田 → yamada, long-vowel spellings all accepted) and `translate_rev` (Japanese → Italian). The word being asked about is always underlined inside a real sentence, whose Italian translation is available on request
+- **Exercise sessions** — a sequence of exercises with a final summary, graded client-side. Japanese track types, mostly pick-one-of-four and never requiring a Japanese keyboard: `kanji_reading` (学生 → がくせい), `kanji_writing` (がっこう → 学校), `multiple_choice`, `fill_blank`, plus at most two typed answers per session — `romaji_input` (山田 → yamada, long-vowel spellings all accepted) and `translate_rev` (Japanese → base language). The word being asked about is always underlined inside a real sentence, whose translation is available on request
 - **Difficulty 1–10** — two steps per JLPT level (1 first lessons, 2 N5, 3–4 N4 … 9–10 N1), so the beginner levels are fine-grained
 - **Level gate** — generated exercises at levels 1–2 may only use that level's kanji (first-lesson set, then JLPT N5); anything else is rejected before it reaches the database
 - **Practice mode** — start a session straight from filters (type, difficulty), with no LLM cost
