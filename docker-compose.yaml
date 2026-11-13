@@ -1,0 +1,55 @@
+services:
+  # ── PostgreSQL ──────────────────────────────
+  # Credentials come from .env (see .env.example). On the first start with an
+  # empty data directory, postgresql/schema.sql is applied automatically.
+  postgres:
+    image: postgres:18.1-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      # Bound to localhost: the database is never reachable from the network.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./volumes/postgresql:/var/lib/postgresql
+      - ./postgresql/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+
+  # ── FastAPI Backend ─────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: langlearn_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Always point at the compose service, whatever host .env uses.
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"   # Swagger UI at localhost:8000/docs, localhost only
+
+  # ── React Frontend ──────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: langlearn_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Localhost only. Do not expose it to the internet: there is no
+      # authentication and every visitor would spend your Anthropic credit.
+      - "127.0.0.1:80:80"
