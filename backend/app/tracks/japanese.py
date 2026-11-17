@@ -9,7 +9,9 @@ from .japanese_payloads import (
     level_problems,
     text_level,
 )
-from .japanese_text import annotate_payload, dictionary_term, extract_terms, split_sentences
+from .japanese_text import (
+    annotate_payload, dictionary_term, to_hiragana, extract_terms, reading_override_problems, set_reading_overrides, split_sentences,
+)
 
 _GUIDELINES = f"""\
 Track: Japanese studied by an Italian speaker.
@@ -86,4 +88,7 @@ JAPANESE = TrackSpec(
     text_level=text_level,
     extract_terms=extract_terms,
     dictionary_term=dictionary_term,
+    set_reading_overrides=set_reading_overrides,
+    normalize_reading=to_hiragana,
+    reading_override_problems=reading_override_problems,
 )

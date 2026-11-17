@@ -383,3 +383,27 @@ class TermSyncResponse(BaseModel):
     exercises_linked: int
     terms_created: int
 
+
+
+# ---------------------------------------------------------------------------
+# Reading overrides — a word's reading fixed by hand, track-wide
+# ---------------------------------------------------------------------------
+class ReadingOverrideRequest(BaseModel):
+    track: str = Field(description="Track code, e.g. 'ja'")
+    surface: str = Field(min_length=1, max_length=32, description="The word as written, with kanji (e.g. 五本)")
+    reading: str = Field(min_length=1, max_length=64, description="Its reading in kana (e.g. ごほん)")
+
+
+class ReadingOverrideResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    surface: str
+    reading: str
+    user_display_name: str | None
+    created_at: datetime
+
+
+class ReadingOverrideChange(BaseModel):
+    override: ReadingOverrideResponse | None   # null after a delete
+    exercises_updated: int

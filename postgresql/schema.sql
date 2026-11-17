@@ -227,6 +227,17 @@ CREATE TABLE exercise_terms (
 
 CREATE INDEX ix_exercise_terms_term ON exercise_terms (term_id);
 
+-- Words whose computed reading is wrong, and the reading to use (furigana, romaji), track-wide.
+CREATE TABLE reading_overrides (
+    id          SERIAL PRIMARY KEY,
+    track_id    INTEGER      NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
+    surface     VARCHAR(32)  NOT NULL,     -- the word as written, with kanji
+    reading     VARCHAR(64)  NOT NULL,     -- its reading (hiragana for Japanese)
+    user_id     INTEGER      REFERENCES users(id) ON DELETE SET NULL,   -- who added it
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    CONSTRAINT uq_reading_overrides UNIQUE (track_id, surface)
+);
+
 
 -- =============================================================================
 -- 8. ATTEMPTS (immutable log, source of truth for progress)

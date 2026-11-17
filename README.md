@@ -20,7 +20,7 @@ An AI-powered language-learning platform, currently focused on **Japanese**. Pic
 - **Difficulty 1–10** — two steps per JLPT level (1 first lessons, 2 N5, 3–4 N4 … 9–10 N1), so the beginner levels are fine-grained
 - **Level gate** — generated exercises at levels 1–2 may only use that level's kanji (first-lesson set, then JLPT N5); anything else is rejected before it reaches the database
 - **Practice mode** — start a session straight from filters (type, difficulty), with no LLM cost
-- **Furigana** — readings above kanji computed deterministically in Python (MeCab via `fugashi` + `unidic-lite`, zero tokens), stored with each exercise, on by default at beginner levels with a toggle — and never on the word the exercise is asking about
+- **Furigana** — readings above kanji computed deterministically in Python (MeCab via `fugashi` + `unidic-lite`, zero tokens), stored with each exercise, on by default at beginner levels with a toggle — and never on the word the exercise is asking about; a wrong reading (五本 → ごほん) can be fixed once, by hand, for the whole track (furigana and romaji, stored exercises updated)
 - **Exercise selection/generation agent** — after the negotiation, an orchestrator deterministically computes a 60% topic / 20% review-of-mistakes / 20% harder-difficulty mix (with at least 60% light `multiple_choice`/`fill_blank` types) and hands Claude (tool-use loop, max 2 cycles) only the targeted generation of the remaining gap — types always come from the track; the pipeline is documented in `backend/app/exercise_agent.py`
 - **Observability** — every agent run is recorded in `agent_runs` (cycles, tokens, duration, full trace) and browsable from the *Agent Runs* admin panel
 - **Vocabulary** — the words of any text (a chapter, a dialogue) are extracted in dictionary form with MeCab, zero tokens, and stored once per word (言いました → 言う; かみ and 髪 are one term); every exercise is linked to the terms it is about or contains; meanings are asked to the AI once, in batches, and can be fixed by hand; a `.csv` term list (term, reading, meaning) adds curated words with their meanings
@@ -138,6 +138,13 @@ Profile-attributed requests carry the selected profile id in the `X-User-Id` hea
 | POST   | `/terms/meanings`        | Asks the AI the meaning of up to 60 terms without one, and stores it |
 | POST   | `/terms/sync`            | Links the exercises that have no terms yet |
 
+### Readings `/readings`
+| Method | Path                     | Description |
+|--------|--------------------------|-------------|
+| GET    | `/readings`              | Words whose reading was fixed by hand (`track`) |
+| PUT    | `/readings`              | Sets a word's reading for the whole track (`surface`, `reading` in kana); the exercises containing it are updated |
+| DELETE | `/readings/{id}`         | Back to the computed reading; the exercises containing the word are updated |
+
 ### Chat `/chat`
 | Method | Path                                       | Description |
 |--------|--------------------------------------------|-------------|
@@ -166,6 +173,7 @@ docker exec -i postgres psql -U <user> -d <db> < migrations/0001_exercise_annota
 | `migrations/0004_studio_imports.sql` | `ingest_jobs` (imported sources), `exercises.ingest_job_id`, origin `human_import` |
 | `migrations/0005_studio_generation.sql` | generation drafts in `ingest_jobs`: kind, status, items, cost |
 | `migrations/0006_terms.sql` | vocabulary: `terms`, `exercise_terms` |
+| `migrations/0007_reading_overrides.sql` | readings fixed by hand: `reading_overrides` |
 
 To recreate the database from `schema.sql` (**deletes all data**):
 

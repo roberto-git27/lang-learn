@@ -308,6 +308,28 @@ class ExerciseTerm(Base):
     role: Mapped[str] = mapped_column(String(8), nullable=False)   # focus | contains
 
 
+class ReadingOverride(Base):
+    """
+    A word whose computed reading is wrong (五本 → ごほん) and the reading to
+    use instead, everywhere in the track (see `reading_service.py`).
+    """
+    __tablename__ = "reading_overrides"
+    __table_args__ = (UniqueConstraint("track_id", "surface", name="uq_reading_overrides"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    track_id: Mapped[int] = mapped_column(ForeignKey("tracks.id", ondelete="CASCADE"), nullable=False)
+    surface: Mapped[str] = mapped_column(String(32), nullable=False)
+    reading: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", lazy="joined")
+
+    @property
+    def user_display_name(self) -> str | None:
+        return self.user.display_name if self.user else None
+
+
 class Attempt(Base):
     """Immutable log of every attempt. Source of truth for progress."""
     __tablename__ = "attempts"

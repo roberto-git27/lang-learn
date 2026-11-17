@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { AgentRunsPanel } from "./admin/AgentRunsPanel";
 import { CoveragePanel } from "./admin/CoveragePanel";
+import { ReadingsPanel } from "./admin/ReadingsPanel";
 import { ReviewPanel } from "./admin/ReviewPanel";
 
 const TABS = [
   { id: "review",      label: "Review",     icon: "🔍" },
   { id: "coverage",    label: "Coverage",   icon: "🧮" },
+  { id: "readings",    label: "Readings",   icon: "ふ" },
   { id: "agent-runs",  label: "Agent Runs", icon: "📊" },
 ];
 
@@ -17,7 +19,7 @@ export function AdminPage({ track }) {
       {/* Page header */}
       <div style={headerBlock}>
         <h1 style={pageTitle}>Admin</h1>
-        <p style={pageSubtitle}>Review generated exercises, see how many exercises each level has and inspect every run of the exercise agent. New exercises are written in the Studio.</p>
+        <p style={pageSubtitle}>Review generated exercises, see how many exercises each level has, fix wrong furigana readings and inspect every run of the exercise agent. New exercises are written in the Studio.</p>
       </div>
 
       {/* Tab bar */}
@@ -34,6 +36,7 @@ export function AdminPage({ track }) {
       <div style={panelWrap}>
         {tab === "review"      && <ReviewPanel track={track} />}
         {tab === "coverage"    && <CoveragePanel track={track} />}
+        {tab === "readings"    && <ReadingsPanel track={track} />}
         {tab === "agent-runs"  && <AgentRunsPanel track={track} />}
       </div>
 

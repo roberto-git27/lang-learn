@@ -43,6 +43,14 @@ class TrackSpec:
     )
     extract_terms: Callable[[str], list[TermCandidate]] = field(default=lambda text: [])
     text_level: Callable[[str], int] = field(default=lambda text: 1)
+    # Hand-made reading overrides (surface → reading), applied by every reading the track computes.
+    set_reading_overrides: Callable[[dict[str, str]], None] = field(default=lambda overrides: None)
+    # Problems of a reading override (empty = OK); a track without readings accepts none.
+    reading_override_problems: Callable[[str, str], list[str]] = field(
+        default=lambda surface, reading: ["This track has no computed readings"]
+    )
+    # A reading as stored (Japanese: katakana → hiragana).
+    normalize_reading: Callable[[str], str] = field(default=lambda reading: reading)
     # A word typed by a human (a term list, with an optional reading) as one term; None when empty.
     dictionary_term: Callable[[str, str | None], TermCandidate | None] = field(
         default=lambda word, reading=None: (

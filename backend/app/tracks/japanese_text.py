@@ -41,6 +41,11 @@ _READING_OVERRIDES = {
     "私": "わたし",
     "日本": "にほん",
 }
+# Reading overrides added by hand from the app (table `reading_overrides`): a
+# word (one or more MeCab tokens, e.g. 五本) → its reading, everywhere in the
+# track. Process-wide, set by `set_reading_overrides` at startup and after each
+# change (one backend process: see `reading_service.py`).
+_USER_OVERRIDES: dict[str, str] = {}
 # Context overrides: (previous token, token) → reading.
 _PAIR_OVERRIDES = {
     ("外国", "人"): "じん",
@@ -163,6 +168,59 @@ def _kanji_reading(word, previous) -> str:
     )
 
 
+def set_reading_overrides(overrides: dict[str, str]) -> None:
+    """Replaces the hand-made reading overrides (surface → reading, stored in hiragana)."""
+    _USER_OVERRIDES.clear()
+    _USER_OVERRIDES.update({surface: to_hiragana(reading) for surface, reading in overrides.items() if surface and reading})
+
+
+_KANA_ONLY = re.compile(r"^[\u3041-\u3096\u30a1-\u30faー]+$")
+
+
+def reading_override_problems(surface: str, reading: str) -> list[str]:
+    """A hand-made override must be a word with kanji and a reading in kana."""
+    problems = []
+    if not surface or any(c.isspace() for c in surface) or len(surface) > 32:
+        problems.append("The word must be 1–32 characters, without spaces")
+    elif not has_kanji(surface):
+        problems.append("The word must contain kanji: only kanji get furigana")
+    if not _KANA_ONLY.match(reading or "") or len(reading) > 64:
+        problems.append("The reading must be written in kana only (up to 64)")
+    return problems
+
+
+def _override_spans(text: str, boundaries: set[int]) -> list[tuple[int, int, str]]:
+    """
+    (start, end, reading) of each hand-made override found in `text`, longest
+    surface first, never overlapping, and only where the match starts and
+    ends on a token boundary: 本 → ほん must not cut 日本 (one token).
+    """
+    taken: list[tuple[int, int, str]] = []
+    for surface in sorted(_USER_OVERRIDES, key=len, reverse=True):
+        for match in re.finditer(re.escape(surface), text):
+            start, end = match.span()
+            if start in boundaries and end in boundaries and all(end <= a or start >= b for a, b, _ in taken):
+                taken.append((start, end, _USER_OVERRIDES[surface]))
+    return sorted(taken)
+
+
+def _replace_spans(text: str, pieces: list, texts: list[str], replacement) -> list:
+    """`pieces` (one per entry of `texts`, which concatenate to `text`) with each override span replaced."""
+    offsets, position = [], 0
+    for piece_text in texts:
+        offsets.append(position)
+        position += len(piece_text)
+    out, index = [], 0
+    for start, end, reading in _override_spans(text, {*offsets, position}):
+        while index < len(pieces) and offsets[index] < start:
+            out.append(pieces[index])
+            index += 1
+        while index < len(pieces) and offsets[index] < end:
+            index += 1
+        out.extend(replacement(text[start:end], reading))
+    return out + pieces[index:]
+
+
 def annotate(text: str) -> list[Segment]:
     """Segments of `text` (concatenating to exactly `text`), with hiragana readings over kanji."""
     segments: list[Segment] = []
@@ -182,6 +240,8 @@ def annotate(text: str) -> list[Segment]:
     rebuilt = "".join(seg["text"] for seg in segments)
     if rebuilt != text and text.startswith(rebuilt):
         segments.append({"text": text[len(rebuilt):]})
+    if _USER_OVERRIDES and "".join(seg["text"] for seg in segments) == text:
+        segments = _replace_spans(text, segments, [seg["text"] for seg in segments], _split_okurigana)
     return _merge_plain(_drop_isolated_characters(_drop_explicit_readings(segments)))
 
 
@@ -223,10 +283,13 @@ def spoken_reading(text: str) -> str:
     overrides), particles は/へ/を as わ/え/お, other characters unchanged.
     """
     parts: list[str] = []
+    surfaces: list[str] = []   # the text behind each part, to apply the hand-made overrides
     previous = None
     for word in _tagger()(text):
         parts.append(word.white_space)
+        surfaces.append(word.white_space)
         surface = word.surface
+        surfaces.append(surface)
         kana = word.feature.kana
         if surface in _WORD_SOUND:
             reading = _WORD_SOUND[surface]
@@ -238,6 +301,8 @@ def spoken_reading(text: str) -> str:
             reading = to_hiragana(surface)
         parts.append(reading)
         previous = word
+    if _USER_OVERRIDES and "".join(surfaces) == text:
+        parts = _replace_spans(text, parts, surfaces, lambda surface, reading: [reading])
     return "".join(parts)
 
 
