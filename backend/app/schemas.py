@@ -314,16 +314,24 @@ class TermPreviewItem(BaseModel):
     written: str
     pos: str
     level: int
-    example: str
+    example: str | None = None
     status: Literal["new", "existing"]
-    meaning: str | None = None
+    meaning: str | None = None       # stored meaning, or the one a term list gives a new term
+    new_meaning: str | None = None   # term list: the meaning it gives a known term without a human one
+    line: int | None = None          # term list: its line
 
 
 class TermsPreviewResponse(BaseModel):
     items: list[TermPreviewItem]
-    errors: list[str]   # file-level problems (front matter)
+    errors: list[str]   # file-level problems (front matter, unreadable term list)
+    warnings: list[str] = []   # term list: rows or columns left out
     new_count: int
     existing_count: int
+    meaning_updates: int = 0   # term list: known terms that get a meaning
+
+
+class TermsSaveResponse(StudioJobSummary):
+    meaning_updates: int = 0   # term list: known terms that got its meaning
 
 
 class TermResponse(BaseModel):

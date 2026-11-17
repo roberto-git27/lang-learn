@@ -10,6 +10,8 @@ style examples for the exercises the agent generates.
 
 - [`ja_starter.md`](ja_starter.md) — 18 beginner Japanese exercises (levels
   1–3, every exercise type). Import it to try the app without spending tokens.
+- [`ja_terms.csv`](ja_terms.csv) — a term list with readings and meanings:
+  open it in the Studio's *Vocabulary* mode.
 - [`ja_story1.md`](ja_story1.md) — a short original story with a dialogue
   (`mode: terms`, JLPT N5 kanji): open it in the Studio's *Vocabulary* mode to
   extract its words.
@@ -155,4 +157,27 @@ mode: terms
 A：雨は いつ やみますか。
 B：午後三時ごろ やみます。
 ```
+
+### Term lists (`.csv`)
+
+Curated words with their meanings, one per line after a header row
+(comma, semicolon or tab; Italian headers `termine`, `lettura`,
+`significato` work too):
+
+```csv
+term,reading,meaning
+学生,,studente
+日,にち,giorno (nei composti)
+こんにちは,,buongiorno
+```
+
+- `term` is required, `reading` (kana) and `meaning` are optional; other
+  columns (a level, tags) are ignored with a warning — a term's level comes
+  from its kanji.
+- A word the dictionary reads as one word becomes the same term as in texts
+  (食べます → 食べる); anything else is kept whole (お茶, こんにちは, a kana-only
+  word). Write words in kanji when they have them, and give the reading
+  when the computed one is wrong (火曜日 → かようび).
+- The meanings are human ones: they go to new terms and to known terms
+  without a meaning or with the AI's, never over one written by hand.
 

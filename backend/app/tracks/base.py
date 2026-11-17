@@ -43,6 +43,13 @@ class TrackSpec:
     )
     extract_terms: Callable[[str], list[TermCandidate]] = field(default=lambda text: [])
     text_level: Callable[[str], int] = field(default=lambda text: 1)
+    # A word typed by a human (a term list, with an optional reading) as one term; None when empty.
+    dictionary_term: Callable[[str, str | None], TermCandidate | None] = field(
+        default=lambda word, reading=None: (
+            TermCandidate(lemma=word.strip(), reading=(reading or word).strip(), written=word.strip(), pos="expression")
+            if word.strip() else None
+        )
+    )
 
     def chat_system_prompt(self) -> str:
         return (PROMPTS_DIR / self.chat_prompt_file).read_text(encoding="utf-8")

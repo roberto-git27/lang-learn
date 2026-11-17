@@ -11,6 +11,9 @@ are asked once, in batches, only for terms that have none, and stored.
   Studio, or in any new exercise (import, generation draft, session agent) —
   and reused afterwards: never two rows for the same word.
 - `sync_exercise_terms` links the exercises created before terms existed.
+- A `.csv` term list (`term_list.py`) goes through the same preview/save: its
+  meanings are human ones, given to new terms and to known terms that have
+  none or only the AI's.
 """
 from __future__ import annotations
 
@@ -26,6 +29,7 @@ from .config import settings
 from .md_import import parse_terms_text
 from .models import Exercise, ExerciseTerm, ExerciseType, IngestJob, PhraseTranslation, Term, Track, User
 from .schemas import TermPreviewItem, TermResponse, TermsPreviewResponse
+from .term_list import TermList, is_term_list, parse_term_list
 from .tracks import TermCandidate, TrackSpec, get_track_spec
 
 Key = tuple[str, str]   # (lemma, reading)
@@ -85,6 +89,8 @@ async def _get_or_create(
 async def preview_terms(db: AsyncSession, track: Track, text: str) -> TermsPreviewResponse:
     """The terms of `text`, marked new or already known; writes nothing, 0 tokens."""
     spec = get_track_spec(track.code)
+    if is_term_list(text):
+        return await _preview_term_list(db, track, spec, parse_term_list(text, spec))
     body, errors = parse_terms_text(text, spec)
     if errors:
         return TermsPreviewResponse(items=[], errors=errors, new_count=0, existing_count=0)
@@ -106,9 +112,83 @@ async def preview_terms(db: AsyncSession, track: Track, text: str) -> TermsPrevi
     )
 
 
-async def save_terms(db: AsyncSession, track: Track, user: User, text: str, source_name: str) -> IngestJob:
-    """Stores the new terms of `text` (the source is kept in a 'terms' job); 400 when every term is known."""
+def _meaning_update(term: Term, meaning: str | None) -> str | None:
+    """The meaning a term list gives a known term: never over a human one."""
+    if meaning and term.meaning_source != "human" and term.meaning != meaning:
+        return meaning
+    return None
+
+
+async def _preview_term_list(db: AsyncSession, track: Track, spec: TrackSpec, parsed: TermList) -> TermsPreviewResponse:
+    if parsed.errors:
+        return TermsPreviewResponse(items=[], errors=parsed.errors, warnings=parsed.warnings, new_count=0, existing_count=0)
+    existing = await _existing(db, track, {_key(row.candidate) for row in parsed.rows})
+    items, warnings = [], list(parsed.warnings)
+    for row in parsed.rows:
+        candidate, known = row.candidate, existing.get(_key(row.candidate))
+        if known is not None and row.meaning and known.meaning_source == "human" and known.meaning != row.meaning:
+            warnings.append(f"Line {row.line}: {known.written} keeps the meaning written by hand ({known.meaning})")
+        items.append(TermPreviewItem(
+            lemma=candidate.lemma, reading=candidate.reading, written=known.written if known else candidate.written,
+            pos=candidate.pos, level=known.level if known else spec.text_level(candidate.written),
+            example=known.example if known else None, status="existing" if known else "new",
+            meaning=known.meaning if known else row.meaning,
+            new_meaning=_meaning_update(known, row.meaning) if known else None, line=row.line,
+        ))
+    return TermsPreviewResponse(
+        items=items, errors=[], warnings=warnings,
+        new_count=sum(item.status == "new" for item in items),
+        existing_count=sum(item.status == "existing" for item in items),
+        meaning_updates=sum(item.new_meaning is not None for item in items),
+    )
+
+
+async def _save_term_list(
+    db: AsyncSession, track: Track, user: User, spec: TrackSpec, text: str, source_name: str,
+) -> tuple[IngestJob, int]:
+    parsed = parse_term_list(text, spec)
+    if parsed.errors:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(parsed.errors))
+    existing = await _existing(db, track, {_key(row.candidate) for row in parsed.rows})
+    job = IngestJob(
+        track_id=track.id, user_id=user.id, source_name=source_name.strip(), source_text=text,
+        kind="terms", status="saved",
+    )
+    db.add(job)
+    await db.flush()
+    created = updated = 0
+    for row in parsed.rows:
+        candidate, known = row.candidate, existing.get(_key(row.candidate))
+        if known is not None:
+            meaning = _meaning_update(known, row.meaning)
+            if meaning:
+                known.meaning, known.meaning_source = meaning, "human"
+                updated += 1
+            continue
+        db.add(Term(
+            track_id=track.id, lemma=candidate.lemma, reading=candidate.reading, written=candidate.written,
+            pos=candidate.pos, level=spec.text_level(candidate.written), ingest_job_id=job.id,
+            meaning=row.meaning, meaning_source="human" if row.meaning else None,
+        ))
+        created += 1
+    if not created and not updated:
+        await db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Every term of the list is already known, with its meaning")
+    job.created_count, job.duplicate_count = created, len(parsed.rows) - created
+    await db.commit()
+    await db.refresh(job, attribute_names=["user"])
+    return job, updated
+
+
+async def save_terms(db: AsyncSession, track: Track, user: User, text: str, source_name: str) -> tuple[IngestJob, int]:
+    """
+    Stores the new terms of `text` (the source is kept in a 'terms' job);
+    returns the job and how many known terms got a meaning from a term list.
+    400 when nothing changes.
+    """
     spec = get_track_spec(track.code)
+    if is_term_list(text):
+        return await _save_term_list(db, track, user, spec, text, source_name)
     body, errors = parse_terms_text(text, spec)
     if errors:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(errors))
@@ -128,7 +208,7 @@ async def save_terms(db: AsyncSession, track: Track, user: User, text: str, sour
     job.created_count, job.duplicate_count = created, len(found) - created
     await db.commit()
     await db.refresh(job, attribute_names=["user"])
-    return job
+    return job, 0
 
 
 # ---------------------------------------------------------------------------

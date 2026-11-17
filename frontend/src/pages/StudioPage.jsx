@@ -57,6 +57,11 @@ mode: terms
 A：雨は いつ やみますか。
 B：午後三時ごろ やみます。`;
 
+const TERM_LIST_EXAMPLE = `term,reading,meaning
+学生,,studente
+日,にち,giorno (nei composti)
+こんにちは,,buongiorno`;
+
 const MODES = {
   import: { label: "Import .md", example: IMPORT_EXAMPLE },
   generate: { label: "Generate with AI", example: GENERATE_EXAMPLE },
@@ -66,7 +71,7 @@ const MODES = {
 const PLACEHOLDERS = {
   import: "Paste a .md of exercises, or open a file.\n\n",
   generate: "Write a generation request, or open one (e.g. sample/ja_generate1.md).\n\n",
-  terms: "Paste any text, or open one (e.g. sample/ja_story1.md): its words are extracted in dictionary form.\n\n",
+  terms: "Paste any text, or open one (e.g. sample/ja_story1.md): its words are extracted in dictionary form. A .csv term list works too.\n\n",
 };
 
 const FRONT_MATTER_MODE = /^---\s*\n(?:.*\n)*?mode:\s*(import|generate|terms)\b.*\n(?:.*\n)*?---/;
@@ -122,7 +127,7 @@ export function StudioPage({ track }) {
   const openFile = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (file) loadText(await file.text(), file.name);
+    if (file) loadText(await file.text(), file.name, /\.(csv|tsv)$/i.test(file.name) ? "terms" : undefined);
   };
 
   const run = async (label, action) => {
@@ -173,7 +178,8 @@ export function StudioPage({ track }) {
   const handleSaveTerms = () => run("saveTerms", async () => {
     const job = await postJson("/api/studio/terms", body());
     setTermsPreview(null);
-    setNotice(`Saved ${job.created_count} new term${job.created_count === 1 ? "" : "s"} from ${job.source_name}${job.duplicate_count ? ` (${job.duplicate_count} already known)` : ""}. Meanings: "Translate missing meanings" below, or write them by hand.`);
+    const updates = job.meaning_updates ? ` ${job.meaning_updates} known term${job.meaning_updates === 1 ? "" : "s"} got the list's meaning.` : "";
+    setNotice(`Saved ${job.created_count} new term${job.created_count === 1 ? "" : "s"} from ${job.source_name}${job.duplicate_count ? ` (${job.duplicate_count} already known)` : ""}.${updates} Missing meanings: "Translate missing meanings" below, or write them by hand.`);
     setHistoryVersion((v) => v + 1);
     setVocabularyVersion((v) => v + 1);
   });
@@ -225,8 +231,8 @@ export function StudioPage({ track }) {
 
       <div style={cardStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "14px" }}>
-          <button onClick={() => fileInput.current?.click()} style={secondaryBtn}>Open .md file…</button>
-          <input ref={fileInput} type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" onChange={openFile} style={{ display: "none" }} />
+          <button onClick={() => fileInput.current?.click()} style={secondaryBtn}>{mode === "terms" ? "Open .md / .csv file…" : "Open .md file…"}</button>
+          <input ref={fileInput} type="file" accept=".md,.markdown,.txt,.csv,.tsv,text/markdown,text/plain,text/csv" onChange={openFile} style={{ display: "none" }} />
           <input
             value={source.name} onChange={(e) => setSource(mode, { name: e.target.value })} maxLength={255}
             title="Name kept with the job" style={{ ...inputStyle, flex: 1, minWidth: "160px", padding: "7px 11px", fontSize: "13px" }}
@@ -306,11 +312,22 @@ function FormatGuide({ mode, track }) {
           </p>
         </>
       ) : mode === "terms" ? (
-        <p style={guideNote}>
-          Any text: its content words are extracted in dictionary form (言いました → 言う), without particles or auxiliaries,
-          and compared with the vocabulary already stored — the same word is never stored twice (かみ and 髪 are one term).
-          Headings, comments and the front matter are ignored. No AI: meanings are added below, on request.
-        </p>
+        <>
+          <p style={guideNote}>
+            Any text: its content words are extracted in dictionary form (言いました → 言う), without particles or auxiliaries,
+            and compared with the vocabulary already stored — the same word is never stored twice (かみ and 髪 are one term).
+            Headings, comments and the front matter are ignored. No AI: meanings are added below, on request.
+          </p>
+          <p style={{ ...labelStyle, margin: "14px 0 6px" }}>Or a term list (.csv)</p>
+          <pre style={preStyle}>{TERM_LIST_EXAMPLE}</pre>
+          <p style={guideNote}>
+            A header row, then one term per line (comma, semicolon or tab). <code style={codeStyle}>reading</code> (kana) and{" "}
+            <code style={codeStyle}>meaning</code> are optional; Italian headers work too (termine, lettura, significato).
+            A word the dictionary knows becomes the same term as in texts (食べます → 食べる); anything else is kept whole
+            (お茶, こんにちは) — give the reading when the computed one is wrong. Meanings here are yours: they also fill
+            known terms without one, or with the AI's, never one written by hand. Write words in kanji when they have them.
+          </p>
+        </>
       ) : (
         <p style={guideNote}>
           Everything that is not front matter or a term is sent to the AI as your request. Each exercise is checked before it
@@ -449,30 +466,43 @@ function PreviewItem({ item, label, selectable = false, selected = false, onTogg
 
 const POS_LABELS = {
   noun: "noun", proper_noun: "name", pronoun: "pronoun", verb: "verb", i_adjective: "い-adj",
-  na_adjective: "な-adj", adverb: "adverb", prenominal: "prenominal", numeral: "numeral",
+  na_adjective: "な-adj", adverb: "adverb", prenominal: "prenominal", numeral: "numeral", expression: "expression",
 };
 
 function TermsPreview({ preview, busy, onSave }) {
-  const blocked = preview.errors.length > 0 || preview.new_count === 0 || !!busy;
+  const updates = preview.meaning_updates ?? 0;
+  const blocked = preview.errors.length > 0 || (preview.new_count === 0 && updates === 0) || !!busy;
+  const label = [
+    preview.new_count ? `${preview.new_count} new term${preview.new_count === 1 ? "" : "s"}` : "",
+    updates ? `${updates} meaning${updates === 1 ? "" : "s"}` : "",
+  ].filter(Boolean).join(" + ") || "0 new terms";
   return (
     <div style={{ ...cardStyle, marginTop: "16px", animation: "fadeSlideIn 0.3s ease forwards" }}>
-      <h3 style={sectionTitle}>Terms in the text</h3>
+      <h3 style={sectionTitle}>{preview.items.some((t) => t.line) ? "Terms in the list" : "Terms in the text"}</h3>
       {preview.errors.map((e) => <ErrorBox key={e} message={e} />)}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "10px 0 16px" }}>
         <span style={countChip("ready")}>{preview.new_count} new</span>
         <span style={countChip("duplicate")}>{preview.existing_count} already known</span>
+        {updates > 0 && <span style={countChip("ready")}>{updates} meaning{updates === 1 ? "" : "s"} to add</span>}
       </div>
+      {(preview.warnings ?? []).length > 0 && (
+        <ul style={{ margin: "0 0 14px 18px", fontSize: "12px", color: "var(--text-secondary)" }}>
+          {preview.warnings.map((w) => <li key={w}>{w}</li>)}
+        </ul>
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
         {preview.items.map((term) => (
-          <div key={`${term.lemma}|${term.reading}`} style={{ ...termRow, opacity: term.status === "existing" ? 0.55 : 1 }}>
+          <div key={`${term.lemma}|${term.reading}`} style={{ ...termRow, opacity: term.status === "existing" && !term.new_meaning ? 0.55 : 1 }}>
             <TermHead term={term} />
-            <span style={{ fontSize: "12px", color: "var(--text-secondary)", flex: 1, minWidth: "120px" }}>{term.meaning ?? ""}</span>
-            <span title={term.example} style={exampleText}>{term.example}</span>
+            <span style={{ fontSize: "12px", color: "var(--text-secondary)", flex: 1, minWidth: "120px" }}>
+              {term.new_meaning ? <>{term.meaning ? <s>{term.meaning}</s> : null} → {term.new_meaning}</> : term.meaning ?? ""}
+            </span>
+            {term.example && <span title={term.example} style={exampleText}>{term.example}</span>}
           </div>
         ))}
       </div>
       <button onClick={onSave} disabled={blocked} style={{ ...submitButtonStyle(blocked), marginTop: "18px" }}>
-        {busy === "saveTerms" ? <Spinner /> : `Save ${preview.new_count} new term${preview.new_count === 1 ? "" : "s"}`}
+        {busy === "saveTerms" ? <Spinner /> : `Save ${label}`}
       </button>
     </div>
   );

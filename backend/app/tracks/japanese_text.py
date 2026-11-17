@@ -616,3 +616,33 @@ def extract_terms(text: str) -> list[TermCandidate]:
         terms.setdefault((candidate.lemma, candidate.reading), candidate)
         last, before_previous, previous = candidate, previous, word
     return list(terms.values())
+
+
+_INFLECTING = {"verb", "i_adjective"}
+
+
+def dictionary_term(word: str, reading: str | None = None) -> TermCandidate | None:
+    """
+    A word written by a human (a term list) as one term. When MeCab reads it
+    as one word — possibly inflected: 食べます → 食べる — that term is used,
+    so it matches the terms found in texts. Otherwise the entry is kept whole
+    (こんにちは, お茶, 火曜日): MeCab splits isolated kana and set phrases
+    badly, and a curated entry must not be cut. A given `reading` (kana)
+    wins: 日 with にち is another term than 日 (ひ). None for an empty word.
+    """
+    word = word.strip()
+    if not word:
+        return None
+    reading = to_hiragana(reading.strip()) if reading and reading.strip() else None
+    candidates = extract_terms(word)
+    if len(candidates) == 1:
+        (candidate,) = candidates
+        same_word = candidate.written == word or (
+            candidate.pos in _INFLECTING and word[:1] == candidate.written[:1]
+        )
+        if same_word and (reading is None or reading == candidate.reading):
+            return candidate
+    if reading is None:
+        reading = "".join(segment.get("reading") or to_hiragana(segment["text"]) for segment in annotate(word))
+    pos = candidates[0].pos if len(candidates) == 1 else "expression"
+    return TermCandidate(lemma=word, reading=reading, written=word, pos=pos)

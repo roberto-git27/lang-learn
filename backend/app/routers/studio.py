@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..schemas import (
     GenerationSaveRequest, ImportPreviewResponse, NormalizeResponse, StudioJobDetail, StudioJobSummary, StudioTextRequest,
-    TermsPreviewResponse,
+    TermsPreviewResponse, TermsSaveResponse,
 )
 from .. import studio_service, term_service, track_service, user_service
 
@@ -114,7 +114,8 @@ async def discard_generation_endpoint(
 @router.post(
     "/terms/preview",
     response_model=TermsPreviewResponse,
-    summary="Vocabulary of a text in dictionary form, marked new or already known (writes nothing, no LLM)",
+    summary="Vocabulary of a text, or of a .csv term list, in dictionary form, marked new or already known "
+            "(writes nothing, no LLM)",
 )
 async def preview_terms_endpoint(request: StudioTextRequest, db: AsyncSession = Depends(get_db)) -> TermsPreviewResponse:
     track = await track_service.get_track(db, request.track)
@@ -123,18 +124,20 @@ async def preview_terms_endpoint(request: StudioTextRequest, db: AsyncSession = 
 
 @router.post(
     "/terms",
-    response_model=StudioJobSummary,
+    response_model=TermsSaveResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Store the new terms of a text (no meanings yet); the text is kept with the job",
+    summary="Store the new terms of a text (no meanings yet) or of a .csv term list (with its meanings, also given to "
+            "known terms without a human one); the source is kept with the job",
 )
 async def save_terms_endpoint(
     request: StudioTextRequest,
     user_id: int = Depends(user_service.current_user_id),
     db: AsyncSession = Depends(get_db),
-) -> StudioJobSummary:
+) -> TermsSaveResponse:
     user = await user_service.get_user(db, user_id)
     track = await track_service.get_track(db, request.track)
-    return StudioJobSummary.model_validate(await term_service.save_terms(db, track, user, request.text, request.source_name))
+    job, meaning_updates = await term_service.save_terms(db, track, user, request.text, request.source_name)
+    return TermsSaveResponse.model_validate(job).model_copy(update={"meaning_updates": meaning_updates})
 
 
 @router.get("/jobs", response_model=list[StudioJobSummary], summary="Past imports and generations of a track, most recent first")

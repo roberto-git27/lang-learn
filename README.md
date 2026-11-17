@@ -23,7 +23,7 @@ An AI-powered language-learning platform, currently focused on **Japanese**. Pic
 - **Furigana** — readings above kanji computed deterministically in Python (MeCab via `fugashi` + `unidic-lite`, zero tokens), stored with each exercise, on by default at beginner levels with a toggle — and never on the word the exercise is asking about
 - **Exercise selection/generation agent** — after the negotiation, an orchestrator deterministically computes a 60% topic / 20% review-of-mistakes / 20% harder-difficulty mix (with at least 60% light `multiple_choice`/`fill_blank` types) and hands Claude (tool-use loop, max 2 cycles) only the targeted generation of the remaining gap — types always come from the track; the pipeline is documented in `backend/app/exercise_agent.py`
 - **Observability** — every agent run is recorded in `agent_runs` (cycles, tokens, duration, full trace) and browsable from the *Agent Runs* admin panel
-- **Vocabulary** — the words of any text (a chapter, a dialogue) are extracted in dictionary form with MeCab, zero tokens, and stored once per word (言いました → 言う; かみ and 髪 are one term); every exercise is linked to the terms it is about or contains; meanings are asked to the AI once, in batches, and can be fixed by hand
+- **Vocabulary** — the words of any text (a chapter, a dialogue) are extracted in dictionary form with MeCab, zero tokens, and stored once per word (言いました → 言う; かみ and 髪 are one term); every exercise is linked to the terms it is about or contains; meanings are asked to the AI once, in batches, and can be fixed by hand; a `.csv` term list (term, reading, meaning) adds curated words with their meanings
 - **Studio generation** — describe what you want in a `.md` request (parameters, free text, a list of terms such as kanji): the exercises are planned in Python, written by Claude with randomly picked verified exercises as examples, checked (structure, kanji level, the term really used) and shown as a draft with its cost; keep what you like for the review queue, or turn the draft into `.md`, fix it and import it
 - **Studio import** — write exercises in a plain `.md` format ([`sample/README.md`](sample/README.md)), preview them with their furigana and line-numbered errors, then import them: a deterministic parser, zero tokens, duplicates recognized on re-import, and the source file kept with every import; blocks with errors or exercises pasted from a workbook can be rewritten in the format by a cheap model (*Fix with AI*: content copied, never invented, back in the editor for a human check)
 - **Human review** — a review queue for generated exercises (`human_checked`); imported and verified exercises become style examples for later generations
@@ -123,8 +123,8 @@ Profile-attributed requests carry the selected profile id in the `X-User-Id` hea
 | POST   | `/studio/generations`           | Generates exercises from a request `.md` with Claude; returns a draft (items, errors, cost, the draft as `.md`) |
 | POST   | `/studio/generations/{id}/save` | Stores the kept draft items (`keep` positions) as AI-generated exercises, to review |
 | POST   | `/studio/generations/{id}/discard` | Discards a draft |
-| POST   | `/studio/terms/preview`         | Terms of a text in dictionary form, new vs already known (no LLM) |
-| POST   | `/studio/terms`                 | Stores the new terms of a text (source kept) |
+| POST   | `/studio/terms/preview`         | Terms of a text or `.csv` term list in dictionary form, new vs already known (no LLM) |
+| POST   | `/studio/terms`                 | Stores the new terms of a text or term list (source kept; a list's meanings are human ones) |
 | GET    | `/studio/jobs`                  | Past imports, generations and vocabulary extractions of a track |
 | GET    | `/studio/jobs/{id}`             | One job, with its source text (and its draft) |
 
