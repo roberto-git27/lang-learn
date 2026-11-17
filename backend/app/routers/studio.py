@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
 from ..schemas import (
-    GenerationSaveRequest, ImportPreviewResponse, NormalizeResponse, StudioJobDetail, StudioJobSummary, StudioTextRequest,
+    GenerationSaveRequest, ImportPreviewResponse, RegenerateItemRequest, NormalizeResponse, StudioJobDetail, StudioJobSummary, StudioTextRequest,
     TermsPreviewResponse, TermsSaveResponse,
 )
 from .. import studio_service, term_service, track_service, user_service
@@ -93,6 +93,25 @@ async def save_generation_endpoint(
     await user_service.get_user(db, user_id)
     track = await track_service.get_track(db, request.track)
     return StudioJobSummary.model_validate(await studio_service.save_draft(db, track, job_id, request.keep))
+
+
+@router.post(
+    "/generations/{job_id}/items/{position}/regenerate",
+    response_model=StudioJobDetail,
+    summary="Write one draft item again with Claude (same spec, a different sentence, optional note); "
+            "the cost is added to the job",
+)
+async def regenerate_item_endpoint(
+    job_id: int,
+    position: int,
+    request: RegenerateItemRequest,
+    user_id: int = Depends(user_service.current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> StudioJobDetail:
+    await user_service.get_user(db, user_id)
+    track = await track_service.get_track(db, request.track)
+    job = await studio_service.regenerate_item(db, track, job_id, position, request.note)
+    return studio_service.job_detail(job, track)
 
 
 @router.post(

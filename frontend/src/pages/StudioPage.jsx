@@ -196,6 +196,17 @@ export function StudioPage({ track }) {
     setHistoryVersion((v) => v + 1);
   });
 
+  // Resolves to the updated draft (null on error, shown above the editor).
+  const handleRegenerate = async (position, note) => {
+    let updated = null;
+    await run(`regenerate-${position}`, async () => {
+      updated = await postJson(`/api/studio/generations/${draft.id}/items/${position}/regenerate`, { track: track.code, note });
+      setDraft(updated);
+      setHistoryVersion((v) => v + 1);
+    });
+    return updated;
+  };
+
   const handleDiscard = () => run("discard", async () => {
     await postJson(`/api/studio/generations/${draft.id}/discard?track=${encodeURIComponent(track.code)}`, {});
     setDraft(null);
@@ -278,7 +289,10 @@ export function StudioPage({ track }) {
       {mode === "terms" && termsPreview && <TermsPreview preview={termsPreview} busy={busy} onSave={handleSaveTerms} />}
       {mode === "terms" && <Vocabulary track={track} version={vocabularyVersion} />}
       {mode === "generate" && draft && (
-        <GenerationDraft key={draft.id} draft={draft} busy={busy} onSave={handleSave} onDiscard={handleDiscard} onEdit={editAsMarkdown} />
+        <GenerationDraft
+          key={draft.id} draft={draft} busy={busy} error={error}
+          onSave={handleSave} onDiscard={handleDiscard} onEdit={editAsMarkdown} onRegenerate={handleRegenerate}
+        />
       )}
 
       <JobHistory track={track} version={historyVersion} onLoadSource={loadText} onOpenDraft={openDraft} />
@@ -381,8 +395,22 @@ function ImportPreview({ preview, busy, onImport, onFix }) {
 
 /* ── Generation draft ───────────────────────────────────────── */
 
-function GenerationDraft({ draft, busy, onSave, onDiscard, onEdit }) {
+function GenerationDraft({ draft, busy, error, onSave, onDiscard, onEdit, onRegenerate }) {
   const [kept, setKept] = useState(() => new Set(draft.items.flatMap((item, i) => (item.status === "ready" ? [i] : []))));
+  const [rewriting, setRewriting] = useState(null);   // position whose note box is open
+  const [note, setNote] = useState("");
+
+  const regenerate = async (i) => {
+    const updated = await onRegenerate(i, note);
+    if (!updated) return;
+    setRewriting(null);
+    setNote("");
+    setKept((prev) => {
+      const next = new Set(prev);
+      if (updated.items[i]?.status === "ready") next.add(i); else next.delete(i);
+      return next;
+    });
+  };
   const toggle = (i) => setKept((prev) => {
     const next = new Set(prev);
     if (next.has(i)) next.delete(i); else next.add(i);
@@ -404,7 +432,27 @@ function GenerationDraft({ draft, busy, onSave, onDiscard, onEdit }) {
           <PreviewItem
             key={i} item={item} label={`#${item.line}`}
             selectable={item.status === "ready"} selected={kept.has(i)} onToggle={() => toggle(i)}
-          />
+          >
+            {rewriting === i ? (
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center", marginTop: "10px" }}>
+                <input
+                  value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} autoFocus
+                  onKeyDown={(e) => { if (e.key === "Enter" && !busy) regenerate(i); }}
+                  placeholder="What to change (optional), e.g. a more natural sentence"
+                  style={{ ...inputStyle, flex: 1, minWidth: "200px", padding: "7px 11px", fontSize: "13px" }}
+                />
+                <button onClick={() => regenerate(i)} disabled={!!busy} style={secondaryBtn}>
+                  {busy === `regenerate-${i}` ? <Spinner /> : "Write it again"}
+                </button>
+                <button onClick={() => { setRewriting(null); setNote(""); }} disabled={!!busy} style={linkBtn}>Cancel</button>
+                {error && busy === null && <span style={{ fontSize: "12px", color: "var(--error)" }}>{error}</span>}
+              </div>
+            ) : (
+              <button onClick={() => { setRewriting(i); setNote(""); }} disabled={!!busy} style={{ ...linkBtn, marginTop: "8px" }}>
+                ↻ Write this one again with AI
+              </button>
+            )}
+          </PreviewItem>
         ))}
       </div>
 
@@ -432,7 +480,7 @@ function Counts({ items }) {
   );
 }
 
-function PreviewItem({ item, label, selectable = false, selected = false, onToggle }) {
+function PreviewItem({ item, label, selectable = false, selected = false, onToggle, children }) {
   const dimmed = item.status === "duplicate" || (selectable && !selected);
   return (
     <div style={itemCard(item.status, dimmed)}>
@@ -458,6 +506,7 @@ function PreviewItem({ item, label, selectable = false, selected = false, onTogg
           <PayloadDisplay type={item.exercise_type} payload={item.payload} annotations={item.annotations} />
         </>
       )}
+      {children}
     </div>
   );
 }

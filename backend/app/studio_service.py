@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -329,79 +329,149 @@ def _call_claude(track: Track, specs: list[NewExerciseSpec], references, hints, 
     )
 
 
+@dataclass
+class _Generated:
+    accepted: dict[str, tuple] = field(default_factory=dict)   # spec_id → (item, payload)
+    rejected: dict[str, tuple] = field(default_factory=dict)   # spec_id → (item, reason)
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+async def _generate(
+    track: Track, specs: list[NewExerciseSpec], references, instructions: str, avoid: list[str],
+) -> _Generated:
+    """
+    Claude on `specs`: 1 call + at most 1 top-up for missing or rejected
+    items, the rejection reasons added to the instructions. `avoid` lists
+    sentences not to repeat. Raises 502 when the model call fails.
+    """
+    spec = get_track_spec(track.code)
+    languages = {track.target_language.code, track.base_language.code}
+    result = _Generated()
+    request_instructions = instructions
+    try:
+        for _ in range(2):   # first call + one top-up
+            pending = [s for s in specs if s.spec_id not in result.accepted]
+            if not pending:
+                break
+            hints = avoid + [
+                tr.content for item, _ in result.accepted.values() for tr in item.phrase_translations
+                if tr.language == track.target_language.code
+            ]
+            items, usage = await asyncio.to_thread(_call_claude, track, pending, references, hints, instructions)
+            result.calls += 1
+            result.input_tokens += usage["input_tokens"]
+            result.output_tokens += usage["output_tokens"]
+            by_id = {s.spec_id: s for s in pending}
+            for item in items:
+                pending_spec = by_id.get(item.spec_id)
+                if pending_spec is None or item.spec_id in result.accepted:
+                    continue
+                payload, reason = check_studio_item(spec, pending_spec, item, languages)
+                if payload is None:
+                    result.rejected[item.spec_id] = (item, reason)
+                else:
+                    result.accepted[item.spec_id] = (item, payload)
+                    result.rejected.pop(item.spec_id, None)
+            problems = [f"- {sid}: {reason}" for sid, (_, reason) in result.rejected.items()]
+            if problems:
+                instructions = (request_instructions + "\n\n" if request_instructions else "") + (
+                    "Your previous answer for these spec_ids was rejected; generate them again, fixing the problem:\n"
+                    + "\n".join(problems)
+                )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Generation failed: {exc}") from exc
+    return result
+
+
+def _parsed(track: Track, position: int, plan_spec: NewExerciseSpec, generated: _Generated) -> ParsedExercise:
+    item, payload = generated.accepted.get(plan_spec.spec_id, (None, None))
+    reason = None
+    if payload is None:
+        item, reason = generated.rejected.get(plan_spec.spec_id, (None, "not returned by the model"))
+    return to_parsed_exercise(
+        position, plan_spec, item, payload, reason, get_track_spec(track.code),
+        track.target_language.code, track.base_language.code,
+    )
+
+
+def _parse_request(track: Track, text: str):
+    request = parse_generation_request(text, get_track_spec(track.code))
+    if request.errors:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(request.errors))
+    return request, plan_specs(request, track_light_type_codes(track))
+
+
 async def generate_draft(db: AsyncSession, track: Track, user: User, text: str, source_name: str) -> IngestJob:
     """
     Parses the request, plans one spec per exercise, asks Claude (1 call +
     at most 1 top-up for missing or rejected items) and stores the result as
     a draft. 400 for an invalid request, 502 when the model call fails.
     """
-    spec = get_track_spec(track.code)
-    request = parse_generation_request(text, spec)
-    if request.errors:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="; ".join(request.errors))
-    specs = plan_specs(request, track_light_type_codes(track))
+    request, specs = _parse_request(track, text)
     references = await _reference_examples(
         db, track, {s.exercise_type for s in specs}, request.difficulty, request.examples,
     )
-    languages = {track.target_language.code, track.base_language.code}
-
-    accepted: dict[str, tuple] = {}     # spec_id → (item, payload)
-    rejected: dict[str, tuple] = {}     # spec_id → (item, reason)
-    calls = input_tokens = output_tokens = 0
     started = time.monotonic()
-    instructions = request.instructions
-    try:
-        for _ in range(2):   # first call + one top-up
-            pending = [s for s in specs if s.spec_id not in accepted]
-            if not pending:
-                break
-            hints = [
-                tr.content for item, _ in accepted.values() for tr in item.phrase_translations
-                if tr.language == track.target_language.code
-            ]
-            items, usage = await asyncio.to_thread(_call_claude, track, pending, references, hints, instructions)
-            calls += 1
-            input_tokens += usage["input_tokens"]
-            output_tokens += usage["output_tokens"]
-            by_id = {s.spec_id: s for s in pending}
-            for item in items:
-                pending_spec = by_id.get(item.spec_id)
-                if pending_spec is None or item.spec_id in accepted:
-                    continue
-                payload, reason = check_studio_item(spec, pending_spec, item, languages)
-                if payload is None:
-                    rejected[item.spec_id] = (item, reason)
-                else:
-                    accepted[item.spec_id] = (item, payload)
-                    rejected.pop(item.spec_id, None)
-            problems = [f"- {sid}: {reason}" for sid, (_, reason) in rejected.items()]
-            if problems:
-                instructions = (request.instructions + "\n\n" if request.instructions else "") + (
-                    "Your previous answer for these spec_ids was rejected; generate them again, fixing the problem:\n"
-                    + "\n".join(problems)
-                )
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Generation failed: {exc}") from exc
-
-    parsed = []
-    for position, s in enumerate(specs, start=1):
-        item, payload = accepted.get(s.spec_id, (None, None))
-        reason = None
-        if payload is None:
-            item, reason = rejected.get(s.spec_id, (None, "not returned by the model"))
-        parsed.append(to_parsed_exercise(
-            position, s, item, payload, reason, spec, track.target_language.code, track.base_language.code,
-        ))
+    generated = await _generate(track, specs, references, request.instructions, avoid=[])
+    parsed = [_parsed(track, position, s, generated) for position, s in enumerate(specs, start=1)]
     preview, _ = await _classify(db, track, parsed, [], source="item")
 
     job = IngestJob(
         track_id=track.id, user_id=user.id, source_name=source_name.strip(), source_text=text,
         kind="generate", status="draft", items=[item.model_dump() for item in preview.items],
-        model=settings.claude_generation_model, llm_calls=calls, input_tokens=input_tokens, output_tokens=output_tokens,
+        model=settings.claude_generation_model, llm_calls=generated.calls,
+        input_tokens=generated.input_tokens, output_tokens=generated.output_tokens,
         duration_ms=int((time.monotonic() - started) * 1000),
         duplicate_count=preview.duplicate_count, error_count=preview.error_count,
     )
     db.add(job)
+    await db.commit()
+    await db.refresh(job, attribute_names=["user"])
+    return job
+
+
+async def regenerate_item(db: AsyncSession, track: Track, job_id: int, position: int, note: str) -> IngestJob:
+    """
+    Writes one draft item again (0-based `position`), from the same spec as
+    the first time, avoiding every sentence already in the draft, with the
+    reviewer's optional `note` (what to change). The new item replaces the
+    old one even when it fails its checks (the reason is shown); the cost is
+    added to the job's. 502 when the model call fails.
+    """
+    job = await _draft(db, track, job_id)
+    drafted = [ImportPreviewItem.model_validate(item) for item in job.items]
+    if not 0 <= position < len(drafted):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"The draft has no item {position}")
+    request, specs = _parse_request(track, job.source_text)
+    if len(specs) != len(drafted):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The draft no longer matches its request")
+    plan_spec = specs[position]
+    references = await _reference_examples(db, track, {plan_spec.exercise_type}, request.difficulty, request.examples)
+    avoid = [item.phrase_target for item in drafted if item.phrase_target]
+    old = drafted[position].phrase_target
+    instructions = request.instructions
+    extra = []
+    if old:
+        extra.append(f"This exercise replaces one the reviewer rejected (sentence: {old}); write a different one.")
+    if note.strip():
+        extra.append(f"The reviewer's note for it: {note.strip()}")
+    if extra:
+        instructions = (instructions + "\n\n" if instructions else "") + "\n".join(extra)
+
+    started = time.monotonic()
+    generated = await _generate(track, [plan_spec], references, instructions, avoid=avoid)
+    parsed = _parsed(track, position + 1, plan_spec, generated)
+    others = [ParsedExercise(**item.model_dump(exclude={"status", "warnings"})) for i, item in enumerate(drafted) if i != position]
+    preview, _ = await _classify(db, track, [*others[:position], parsed, *others[position:]], [], source="item")
+
+    job.items = [item.model_dump() for item in preview.items]
+    job.llm_calls += generated.calls
+    job.input_tokens += generated.input_tokens
+    job.output_tokens += generated.output_tokens
+    job.duration_ms += int((time.monotonic() - started) * 1000)
+    job.duplicate_count, job.error_count = preview.duplicate_count, preview.error_count
     await db.commit()
     await db.refresh(job, attribute_names=["user"])
     return job

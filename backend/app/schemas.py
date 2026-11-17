@@ -280,6 +280,11 @@ class GenerationSaveRequest(BaseModel):
     keep: list[int] = Field(description="Positions (0-based) of the draft items to save; the others are dropped")
 
 
+class RegenerateItemRequest(BaseModel):
+    track: str = Field(description="Track code, e.g. 'ja'")
+    note: str = Field(default="", max_length=500, description="Optional: what to change, for the AI")
+
+
 class StudioJobSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
