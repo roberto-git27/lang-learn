@@ -1,11 +1,14 @@
 """
-Claude API calls used by the exercise agent and the Studio generation.
+Claude API calls used by the exercise agent and the Studio.
 
-Both calls (`generate_exercises_for_gap`, `translate_terms`) get their
-structured output as a tool call: the prompt names the tool, `tool_choice` is
-`auto` (the 5.5 models reject a forced choice) and `_call_tool` checks that the
-call was made, asking again once if it was not. The tool input arrives already
-parsed and is validated with Pydantic by the caller. No temperature (rejected
+Every call (`generate_exercises_for_gap`, `translate_terms`,
+`normalize_exercises`) gets its structured output as a tool call: the prompt
+names the tool, `tool_choice` is `auto` (the 5.5 models reject a forced
+choice) and `_call_tool` checks that the call was made, asking again once if
+it was not. The tool input arrives already parsed and is validated with
+Pydantic by the caller. Generation runs on the generation model; the import
+fallback (a mapping task, checked by the parser afterwards) on the cheap
+parse model. No temperature (rejected
 by the 5.5 models): `output_config.effort` sets how much the model thinks.
 """
 from __future__ import annotations
@@ -18,6 +21,7 @@ from pydantic import ValidationError
 
 from .config import settings
 from .exercise_payloads import MAX_DIFFICULTY
+from .md_normalize import NormalizedExercise, SkippedSegment
 from .schemas import NewExerciseSpec, SubmitNewExercisesInput
 
 logger = logging.getLogger(__name__)
@@ -32,21 +36,24 @@ _FALLBACK_MODELS = {"claude-sonnet-5-5", "claude-opus-5-5"}
 _FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
 
-def _call_tool(*, tool: dict, prompt: str, max_tokens: int, system: str | None = None) -> tuple[dict, dict]:
+def _call_tool(
+    *, tool: dict, prompt: str, max_tokens: int, system: str | None = None,
+    model: str | None = None, effort: str | None = None,
+) -> tuple[dict, dict]:
     """
-    One generation-model call that must end in a call to `tool`. Returns
-    `(tool_input, usage)`. With `tool_choice` `auto` a call is not
-    guaranteed: a reply without it is asked once more, then it is an error.
-    Streams (thinking counts toward `max_tokens`, which can get large) and
-    keeps only the final message.
+    One call that must end in a call to `tool` — on the generation model
+    unless `model`/`effort` say otherwise. Returns `(tool_input, usage)`.
+    With `tool_choice` `auto` a call is not guaranteed: a reply without it is
+    asked once more, then it is an error. Streams (thinking counts toward
+    `max_tokens`, which can get large) and keeps only the final message.
     """
-    model = settings.claude_generation_model
+    model = model or settings.claude_generation_model
     request = {
         "model": model,
         "max_tokens": max_tokens,
         "tools": [tool],
         "tool_choice": {"type": "auto"},
-        "output_config": {"effort": settings.claude_generation_effort},
+        "output_config": {"effort": effort or settings.claude_generation_effort},
         "messages": [{"role": "user", "content": prompt}],
     }
     if system:
@@ -345,3 +352,147 @@ def translate_terms(terms: list[dict], target_language: str, base_language: str)
         if isinstance(entry, dict) and entry.get("term_id") in requested and entry.get("meaning")
     }
     return meanings, usage
+
+
+# ---------------------------------------------------------------------------
+# Studio import fallback (Phase 9, D-08) — map unreadable .md to the format
+# ---------------------------------------------------------------------------
+# What each exercise type means, in the import format's terms (sample/README.md).
+_IMPORT_TYPE_GUIDE = {
+    "multiple_choice": "a question (in the base language, may quote target-language text) with 4 options, one correct; "
+                       "`sentence` is the target-language sentence the question is about",
+    "fill_blank": "`sentence` with the gap written as ___ (one gap) and 2–6 options for it, one correct",
+    "translate_rev": "the learner translates `sentence` into the base language: `translation` is the expected answer, "
+                     "`alternatives` other accepted answers; no options",
+    "kanji_reading": "`focus` is a word written with kanji, copied exactly from `sentence`; 4 options are its possible "
+                     "readings in kana, one correct",
+    "kanji_writing": "`focus` is a word written in kana, copied exactly from `sentence`; 4 options are spellings with "
+                     "kanji, one correct",
+    "romaji_input": "the learner types `focus` (copied exactly from `sentence`) in romaji; no options; `answer` only if "
+                    "the source gives the romaji",
+}
+
+_NORMALIZE_SYSTEM = """\
+You convert exercises written by a teacher into a fixed structure for a language-learning app. \
+You are a careful copyist, not an author.
+
+Rules:
+- Map, never author: copy the source text exactly (sentences, options, questions, explanations, \
+translations). Do not correct mistakes, do not translate, do not add options, explanations, \
+translations, topics or levels that the source does not contain. A missing value is null (or an \
+empty list); the teacher fills it in afterwards.
+- Allowed changes only: removing numbering and bullet marks ("1.", "a)", "-"), writing a gap as ___, \
+and marking the correct option from the answer the source gives (an answer key, a ✓, bold, "(x)"...). \
+If the source gives no answer, no option is correct.
+- One entry per exercise found in a segment, with that segment's id. A segment can hold several \
+exercises or none (notes, titles, instructions): list segments without exercises in `skipped`, with \
+a short reason.
+- For an invalid block, the parser errors say what was wrong with its format: keep its content and \
+fix only the format.
+- `difficulty` only when the source states a level (1–10) for that exercise; otherwise null (the \
+file's default applies).
+- `source_excerpt`: the exact source lines of the exercise, joined with " / ", so the teacher can \
+compare.
+- Readings (furigana, romaji) are computed by the app: never add them to the text."""
+
+
+def _normalize_tool(types: list[str]) -> dict:
+    nullable = lambda description: {"type": ["string", "null"], "description": description}  # noqa: E731
+    return {
+        "name": "submit_parsed_exercises",
+        "description": "Submit every exercise found in the segments (copied, not authored), and the segments without any.",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "exercises": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "segment_id": {"type": "string"},
+                            "exercise_type": {"type": "string", "enum": types},
+                            "difficulty": {"type": ["integer", "null"]},
+                            "topics": {"type": "array", "items": {"type": "string"}},
+                            "sentence": {"type": "string", "description": "Target-language sentence."},
+                            "translation": nullable("Its translation in the base language, as written in the source."),
+                            "question": nullable("multiple_choice only."),
+                            "focus": nullable("kanji_reading, kanji_writing, romaji_input: the word asked about."),
+                            "options": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {"text": {"type": "string"}, "correct": {"type": "boolean"}},
+                                    "required": ["text", "correct"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                            "alternatives": {"type": "array", "items": {"type": "string"}},
+                            "explanation": nullable("As written in the source."),
+                            "answer": nullable("romaji_input only: the romaji, if the source gives it."),
+                            "source_excerpt": {"type": "string"},
+                        },
+                        "required": [
+                            "segment_id", "exercise_type", "difficulty", "topics", "sentence", "translation",
+                            "question", "focus", "options", "alternatives", "explanation", "answer", "source_excerpt",
+                        ],
+                        "additionalProperties": False,
+                    },
+                },
+                "skipped": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {"segment_id": {"type": "string"}, "reason": {"type": "string"}},
+                        "required": ["segment_id", "reason"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["exercises", "skipped"],
+            "additionalProperties": False,
+        },
+    }
+
+
+def normalize_exercises(
+    segments_text: str, segment_ids: set[str], types: list[str], target_language: str, base_language: str,
+    defaults: str,
+) -> tuple[list[NormalizedExercise], list[SkippedSegment], dict]:
+    """
+    Ask the parse model to map the segments (see `md_normalize.segments_prompt`)
+    to exercises, via a strict `submit_parsed_exercises` call. Returns
+    `(exercises, skipped, usage)`; entries for unknown segment ids are dropped.
+    """
+    lines = [
+        f"Target language: '{target_language}'. Base language (translations, questions, explanations): "
+        f"'{base_language}'.",
+        f"File defaults (already set, do not repeat them): {defaults or 'none'}.",
+        "",
+        "Exercise types:",
+        *(f"- {t}: {_IMPORT_TYPE_GUIDE.get(t, '')}" for t in types),
+        "",
+        "Segments:",
+        segments_text,
+        "",
+        "Answer by calling the submit_parsed_exercises tool once.",
+    ]
+    tool_input, usage = _call_tool(
+        tool=_normalize_tool(types),
+        prompt="\n".join(lines),
+        system=_NORMALIZE_SYSTEM,
+        # Output ≈ the input re-structured, plus room for thinking.
+        max_tokens=min(4000 + len(segments_text) * 3, 64000),
+        model=settings.claude_parse_model,
+        effort=settings.claude_parse_effort,
+    )
+    try:
+        exercises = [NormalizedExercise.model_validate(e) for e in tool_input.get("exercises", [])]
+        skipped = [SkippedSegment.model_validate(s) for s in tool_input.get("skipped", [])]
+    except ValidationError as e:
+        raise ValueError(f"submit_parsed_exercises input does not match the expected schema: {e}") from e
+    return (
+        [e for e in exercises if e.segment_id in segment_ids],
+        [s for s in skipped if s.segment_id in segment_ids],
+        usage,
+    )

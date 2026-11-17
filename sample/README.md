@@ -88,6 +88,19 @@ Readings (furigana, romaji) are always computed, never written in the file.
 
 Every import keeps the source text, so each exercise can be traced back to the file it came from.
 
+### Fix with AI
+
+When the preview has blocks with errors, or no block at all (e.g. exercises
+pasted from a workbook), *Fix with AI* sends **only** those blocks and the
+text outside blocks to a cheap model (Claude Haiku), which maps them to this
+format: content copied as written, never invented — a missing translation or
+an answer the source does not give stays missing, and the preview says so.
+Valid blocks and the front matter are never sent. Each rewritten block gets a
+`<!-- source: … -->` line with the text it came from, and pasted text is kept
+in a comment above its blocks. The result goes back to the editor: compare,
+fill in, *Preview*, *Import* (as verified exercises: you checked them).
+*Restore the text before the AI fix* undoes it.
+
 ## Generation requests
 
 A request is a `.md` with `mode: generate` in the front matter. The Studio

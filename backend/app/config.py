@@ -18,5 +18,10 @@ class Settings(BaseSettings):
     claude_chat_effort: str = "low"
     claude_generation_effort: str = "medium"
 
+    # Studio import fallback (D-08): maps .md the parser cannot read to the
+    # format, never authors content — a cheap model is enough.
+    claude_parse_model: str = "claude-haiku-5-5"
+    claude_parse_effort: str = "low"
+
 
 settings = Settings()

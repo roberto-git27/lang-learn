@@ -5,7 +5,7 @@ An AI-powered language-learning platform, currently focused on **Japanese**. Pic
 > [!WARNING]
 > **Beta, for local or trusted use only.** LangLearn is a proof of concept, not a hosted service. Read this before running it anywhere other than your own machine:
 > - **Profiles are not authentication.** The selected profile is sent as a plain `X-User-Id` header and the backend trusts it; the optional PIN only guards the profile switch in the UI. Anyone who can reach the API can act as any profile.
-> - **Your Anthropic key pays for every visitor.** The chat, the Studio generation and the AI meanings call Claude with the key in your `.env`. If the app is reachable from the internet, anyone can spend your credit.
+> - **Your Anthropic key pays for every visitor.** The chat, the Studio generation, the import's *Fix with AI* and the AI meanings call Claude with the key in your `.env`. If the app is reachable from the internet, anyone can spend your credit.
 > - For these reasons `docker-compose.yaml` binds every port to `127.0.0.1`. Keep it that way unless you add real authentication and rate limiting in front of it.
 > - The database schema can still change between versions, sometimes with a reset (see [Database and migrations](#database-and-migrations)).
 
@@ -25,7 +25,7 @@ An AI-powered language-learning platform, currently focused on **Japanese**. Pic
 - **Observability** — every agent run is recorded in `agent_runs` (cycles, tokens, duration, full trace) and browsable from the *Agent Runs* admin panel
 - **Vocabulary** — the words of any text (a chapter, a dialogue) are extracted in dictionary form with MeCab, zero tokens, and stored once per word (言いました → 言う; かみ and 髪 are one term); every exercise is linked to the terms it is about or contains; meanings are asked to the AI once, in batches, and can be fixed by hand
 - **Studio generation** — describe what you want in a `.md` request (parameters, free text, a list of terms such as kanji): the exercises are planned in Python, written by Claude with randomly picked verified exercises as examples, checked (structure, kanji level, the term really used) and shown as a draft with its cost; keep what you like for the review queue, or turn the draft into `.md`, fix it and import it
-- **Studio import** — write exercises in a plain `.md` format ([`sample/README.md`](sample/README.md)), preview them with their furigana and line-numbered errors, then import them: a deterministic parser, zero tokens, duplicates recognized on re-import, and the source file kept with every import
+- **Studio import** — write exercises in a plain `.md` format ([`sample/README.md`](sample/README.md)), preview them with their furigana and line-numbered errors, then import them: a deterministic parser, zero tokens, duplicates recognized on re-import, and the source file kept with every import; blocks with errors or exercises pasted from a workbook can be rewritten in the format by a cheap model (*Fix with AI*: content copied, never invented, back in the editor for a human check)
 - **Human review** — a review queue for generated exercises (`human_checked`); imported and verified exercises become style examples for later generations
 - **Exercise history** — every completed session (Practice tab and chat) writes `attempts`/`user_topic_progress` per profile and track, which feed the agent's review heuristics
 - **Tests** — pytest suite over the agent's deterministic logic and the validation layer (no network or DB required)
@@ -118,6 +118,7 @@ Profile-attributed requests carry the selected profile id in the `X-User-Id` hea
 | Method | Path                            | Description |
 |--------|---------------------------------|-------------|
 | POST   | `/studio/imports/preview`       | Parses a `.md` of exercises (`track`, `text`) and returns each block's status (ready / duplicate / error), errors and warnings with line numbers, payload and furigana — writes nothing |
+| POST   | `/studio/imports/normalize`     | *Fix with AI*: rewrites the invalid blocks and the text outside blocks in the format with the cheap model (`CLAUDE_PARSE_MODEL`); returns the new `.md`, the skipped parts and the cost — writes nothing |
 | POST   | `/studio/imports`               | Imports the ready blocks as verified exercises, keeping the source text (`track`, `text`, `source_name`) |
 | POST   | `/studio/generations`           | Generates exercises from a request `.md` with Claude; returns a draft (items, errors, cost, the draft as `.md`) |
 | POST   | `/studio/generations/{id}/save` | Stores the kept draft items (`keep` positions) as AI-generated exercises, to review |

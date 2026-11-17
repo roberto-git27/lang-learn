@@ -13,7 +13,9 @@ by Claude from a request (9b, D-23). Both end up as the same items
 
 Import: preview and import re-parse the same text (deterministic, 0 tokens);
 the import stores `origin='human_import'`, already `human_checked` by the
-importing profile. Generation: one request → a plan of specs → Claude (one
+importing profile. What the parser cannot read can be rewritten in the format
+by the cheap parse model on request (`normalize_import`, D-08): the result
+goes back to the editor, never straight to the DB. Generation: one request → a plan of specs → Claude (one
 call + at most one top-up for what was missing or rejected) → a draft kept in
 `ingest_jobs.items`; saving it stores the kept items as `origin='ai_generated'`,
 not verified — they go to the review queue. Every job keeps its source .md
@@ -37,8 +39,13 @@ from .exercise_service import create_phrase, get_or_create_topics
 from .md_import import (
     ParsedExercise, exercises_to_markdown, parse_exercises_md, parse_generation_request,
 )
+from .md_normalize import (
+    MAX_NORMALIZE_CHARS, importable_types, rebuild, segments_prompt, split_for_normalization,
+)
 from .models import Exercise, ExerciseType, IngestJob, Phrase, PhraseTopic, PhraseTranslation, Track, User
-from .schemas import ImportPreviewItem, ImportPreviewResponse, NewExerciseSpec, StudioJobDetail
+from .schemas import (
+    ImportPreviewItem, ImportPreviewResponse, NewExerciseSpec, NormalizeResponse, NormalizeSkipped, StudioJobDetail,
+)
 from .studio_generation import check_studio_item, plan_specs, to_parsed_exercise
 from .track_service import track_exercise_type_id, track_light_type_codes
 from .tracks import get_track_spec
@@ -221,6 +228,59 @@ async def import_exercises(db: AsyncSession, track: Track, user: User, text: str
     await db.commit()
     await db.refresh(job, attribute_names=["user"])
     return job
+
+
+async def normalize_import(track: Track, text: str) -> NormalizeResponse:
+    """
+    LLM fallback of the import (D-08): the invalid blocks and the text outside
+    any block are mapped to the format by the parse model; valid blocks and
+    the front matter are kept verbatim. Writes nothing — the result goes back
+    to the editor, to be previewed and imported by a human. 400 when there is
+    nothing to send or too much, 502 when the model call fails.
+    """
+    spec = get_track_spec(track.code)
+    split = split_for_normalization(text, spec)
+    if split.errors:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Fix the front matter first (the AI never changes it): " + "; ".join(split.errors),
+        )
+    to_send = [s for s in split.segments if s.needs_model]
+    if not to_send:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Nothing to fix: every block is already valid")
+    prompt_text = segments_prompt(to_send)
+    if len(prompt_text) > MAX_NORMALIZE_CHARS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Too much text to fix at once ({len(prompt_text)} characters, at most {MAX_NORMALIZE_CHARS}): split the file",
+        )
+
+    defaults = "; ".join(line.strip() for line in split.head if line.strip() and line.strip() != "---")
+    started = time.monotonic()
+    try:
+        exercises, skipped, usage = await asyncio.to_thread(
+            claude_service.normalize_exercises,
+            prompt_text, {s.id for s in to_send}, importable_types(spec),
+            track.target_language.code, track.base_language.code, defaults,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AI fix failed: {exc}") from exc
+
+    results: dict[str, list] = {}
+    for exercise in exercises:
+        results.setdefault(exercise.segment_id, []).append(exercise)
+    start_of = {s.id: s.start for s in to_send}
+    return NormalizeResponse(
+        text=rebuild(split, results),
+        sent_segments=len(to_send),
+        rewritten_segments=len(results),
+        exercise_count=len(exercises),
+        skipped=[NormalizeSkipped(line=start_of[s.segment_id], reason=s.reason) for s in skipped if s.segment_id not in results],
+        model=settings.claude_parse_model,
+        input_tokens=usage["input_tokens"],
+        output_tokens=usage["output_tokens"],
+        duration_ms=int((time.monotonic() - started) * 1000),
+    )
 
 
 # ---------------------------------------------------------------------------

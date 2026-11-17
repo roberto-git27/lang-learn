@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
 from ..schemas import (
-    GenerationSaveRequest, ImportPreviewResponse, StudioJobDetail, StudioJobSummary, StudioTextRequest,
+    GenerationSaveRequest, ImportPreviewResponse, NormalizeResponse, StudioJobDetail, StudioJobSummary, StudioTextRequest,
     TermsPreviewResponse,
 )
 from .. import studio_service, term_service, track_service, user_service
@@ -27,6 +27,22 @@ router = APIRouter(prefix="/studio", tags=["studio"])
 async def preview_import_endpoint(request: StudioTextRequest, db: AsyncSession = Depends(get_db)) -> ImportPreviewResponse:
     track = await track_service.get_track(db, request.track)
     return await studio_service.preview_import(db, track, request.text)
+
+
+@router.post(
+    "/imports/normalize",
+    response_model=NormalizeResponse,
+    summary="Rewrite the invalid blocks and the text outside blocks of a .md in the import format with the cheap model "
+            "(content copied, never invented); writes nothing — preview the result before importing",
+)
+async def normalize_import_endpoint(
+    request: StudioTextRequest,
+    user_id: int = Depends(user_service.current_user_id),
+    db: AsyncSession = Depends(get_db),
+) -> NormalizeResponse:
+    await user_service.get_user(db, user_id)
+    track = await track_service.get_track(db, request.track)
+    return await studio_service.normalize_import(track, request.text)
 
 
 @router.post(

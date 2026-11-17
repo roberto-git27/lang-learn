@@ -97,6 +97,7 @@ export function StudioPage({ track }) {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [beforeFix, setBeforeFix] = useState(null); // import text before the last AI fix, to restore it
   const fileInput = useRef(null);
 
   const source = sources[mode];
@@ -139,9 +140,30 @@ export function StudioPage({ track }) {
 
   const handlePreview = () => run("preview", async () => setPreview(await postJson("/api/studio/imports/preview", body())));
 
+  const handleFix = () => run("fix", async () => {
+    const original = source.text;
+    const res = await postJson("/api/studio/imports/normalize", body());
+    setSource("import", { text: res.text });
+    setBeforeFix(original);
+    const skipped = res.skipped.map((s) => `line ${s.line}: ${s.reason}`).join("; ");
+    setNotice(
+      `The AI rewrote ${res.rewritten_segments} of ${res.sent_segments} part${res.sent_segments === 1 ? "" : "s"} as ` +
+      `${res.exercise_count} exercise${res.exercise_count === 1 ? "" : "s"} (${res.model}, ` +
+      `${res.input_tokens + res.output_tokens} tokens, ${(res.duration_ms / 1000).toFixed(1)} s). ` +
+      "Content is copied, not invented: compare each block with its <!-- source --> line, fill in what is missing, then Preview." +
+      (skipped ? ` Left as they were — ${skipped}.` : ""),
+    );
+  });
+
+  const restoreBeforeFix = () => {
+    setSource("import", { text: beforeFix });
+    setBeforeFix(null);
+  };
+
   const handleImport = () => run("import", async () => {
     const job = await postJson("/api/studio/imports", body());
     setPreview(null);
+    setBeforeFix(null);
     setNotice(`Imported ${job.created_count} exercise${job.created_count === 1 ? "" : "s"} from ${job.source_name}: verified and available in Practice and Chat.`);
     setHistoryVersion((v) => v + 1);
   });
@@ -239,9 +261,14 @@ export function StudioPage({ track }) {
         )}
 
         {notice && <p style={successBox}>✓ {notice}</p>}
+        {mode === "import" && beforeFix !== null && (
+          <button onClick={restoreBeforeFix} disabled={!!busy} style={{ ...linkBtn, marginTop: "10px" }}>
+            ↺ Restore the text before the AI fix
+          </button>
+        )}
       </div>
 
-      {mode === "import" && preview && <ImportPreview preview={preview} busy={busy} onImport={handleImport} />}
+      {mode === "import" && preview && <ImportPreview preview={preview} busy={busy} onImport={handleImport} onFix={handleFix} />}
       {mode === "terms" && termsPreview && <TermsPreview preview={termsPreview} busy={busy} onSave={handleSaveTerms} />}
       {mode === "terms" && <Vocabulary track={track} version={vocabularyVersion} />}
       {mode === "generate" && draft && (
@@ -297,7 +324,9 @@ function FormatGuide({ mode, track }) {
 
 /* ── Import preview ─────────────────────────────────────────── */
 
-function ImportPreview({ preview, busy, onImport }) {
+function ImportPreview({ preview, busy, onImport, onFix }) {
+  // Invalid blocks, or no block at all (e.g. text pasted from a workbook): the cheap model can map it to the format.
+  const fixable = preview.error_count > 0 || preview.items.length === 0;
   const blocked = preview.errors.length > 0 || preview.ready_count === 0 || !!busy;
   return (
     <div style={{ ...cardStyle, marginTop: "16px", animation: "fadeSlideIn 0.3s ease forwards" }}>
@@ -316,6 +345,18 @@ function ImportPreview({ preview, busy, onImport }) {
         <p style={hintText}>
           Blocks with errors are skipped: fix them and import the file again — what is already imported is recognized as a duplicate.
         </p>
+      )}
+      {fixable && (
+        <div style={{ marginTop: "14px" }}>
+          <button onClick={onFix} disabled={!!busy} style={secondaryBtn}>
+            {busy === "fix" ? <><Spinner /> Fixing…</> : "Fix with AI"}
+          </button>
+          <p style={hintText}>
+            A cheap model rewrites the blocks with errors and any text outside the blocks (e.g. exercises pasted from a
+            workbook) in this format, copying the content without inventing it. Valid blocks and the front matter are
+            not sent. The result goes back to the editor: check it, then Preview again.
+          </p>
+        </div>
       )}
     </div>
   );

@@ -383,3 +383,31 @@ def test_written_tool_call_is_asked_again(monkeypatch):
     assert [m["role"] for m in requests[1]] == ["user", "assistant", "user"]
     assert requests[1][2]["content"] == chat._WRITTEN_TOOL_CALL_NOTE
 
+
+
+def test_import_fallback_runs_on_the_parse_model_with_a_strict_tool(fake, monkeypatch):
+    monkeypatch.setattr(settings, "claude_parse_model", "claude-haiku-5-5")
+    exercise = {
+        "segment_id": "s1", "exercise_type": "romaji_input", "difficulty": None, "topics": [],
+        "sentence": "山田です。", "translation": "Sono Yamada.", "question": None, "focus": "山田",
+        "options": [], "alternatives": [], "explanation": None, "answer": None, "source_excerpt": "山田です。",
+    }
+    reply = {"exercises": [exercise, {**exercise, "segment_id": "s9"}], "skipped": [{"segment_id": "s2", "reason": "notes"}]}
+    client = fake([_response([_tool_use("submit_parsed_exercises", reply)], "tool_use")])
+
+    exercises, skipped, _ = claude_service.normalize_exercises(
+        '<segment id="s1">山田です。</segment>', {"s1", "s2"}, ["romaji_input"], "ja", "it", "difficulty: 1",
+    )
+    assert [e.segment_id for e in exercises] == ["s1"]          # unknown segment ids are dropped
+    assert [s.reason for s in skipped] == ["notes"]
+    request = client.calls[0]
+    assert request["model"] == "claude-haiku-5-5"
+    assert request["beta"] is False                             # no server-side fallback on Haiku
+    assert request["output_config"] == {"effort": settings.claude_parse_effort}
+    assert request["tool_choice"] == {"type": "auto"}
+    tool = request["tools"][0]
+    assert tool["strict"] is True
+    item_schema = tool["input_schema"]["properties"]["exercises"]["items"]
+    assert set(item_schema["required"]) == set(item_schema["properties"])   # strict: every key required
+    assert item_schema["properties"]["exercise_type"]["enum"] == ["romaji_input"]
+    assert "never" in request["system"].lower()

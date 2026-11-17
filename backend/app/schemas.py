@@ -257,6 +257,24 @@ class ImportPreviewResponse(BaseModel):
     error_count: int
 
 
+class NormalizeSkipped(BaseModel):
+    line: int       # first line of the segment, in the text that was sent
+    reason: str
+
+
+class NormalizeResponse(BaseModel):
+    """The .md with the unreadable parts rewritten by the parse model: to preview and check before importing."""
+    text: str
+    sent_segments: int        # segments sent to the model (invalid blocks + text outside blocks)
+    rewritten_segments: int   # segments replaced by the model's exercises
+    exercise_count: int
+    skipped: list[NormalizeSkipped]
+    model: str
+    input_tokens: int
+    output_tokens: int
+    duration_ms: int
+
+
 class GenerationSaveRequest(BaseModel):
     track: str = Field(description="Track code, e.g. 'ja'")
     keep: list[int] = Field(description="Positions (0-based) of the draft items to save; the others are dropped")
