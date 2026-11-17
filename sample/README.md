@@ -19,6 +19,8 @@ style examples for the exercises the agent generates.
   generation requests (level 1, three exercises for each of 一二三四五火 and
   水木金土人本): open them in the Studio, *Generate with AI*, then keep what
   you like. Edit the request text to experiment with the prompt.
+- [`ja_generate_grammar.md`](ja_generate_grammar.md) — a grammar-focus request
+  without terms (も vs の, `count: 6`): the free text is the whole request.
 
 All samples here are written from scratch for this project. Exercises taken
 from textbooks or courses may be copyrighted: keep those files in the
