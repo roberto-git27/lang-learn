@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { exerciseTypeLabel } from "../utils/exerciseTypes";
 import { DIFFICULTY_LEVELS } from "../utils/levels";
+import { ui } from "../i18n";
 
 // Practice filters: the track comes from the header, so only type and difficulty remain.
 export function FilterBar({ track, onStart }) {
@@ -19,13 +20,13 @@ export function FilterBar({ track, onStart }) {
       <div style={gridStyle}>
         {/* Exercise type */}
         <div style={fieldStyle}>
-          <label style={labelStyle}>Exercise type</label>
+          <label style={labelStyle}>{ui.filters.type}</label>
           <select
             value={exerciseType}
             onChange={(e) => setExerciseType(e.target.value)}
             style={selectStyle}
           >
-            <option value="">All types</option>
+            <option value="">{ui.filters.allTypes}</option>
             {track.exercise_types.map(({ code }) => (
               <option key={code} value={code}>{exerciseTypeLabel(code)}</option>
             ))}
@@ -34,13 +35,13 @@ export function FilterBar({ track, onStart }) {
 
         {/* Difficulty */}
         <div style={fieldStyle}>
-          <label style={labelStyle}>Difficulty</label>
+          <label style={labelStyle}>{ui.filters.difficulty}</label>
           <select
             value={difficulty}
             onChange={(e) => setDifficulty(e.target.value)}
             style={selectStyle}
           >
-            <option value="">Any</option>
+            <option value="">{ui.filters.anyDifficulty}</option>
             {DIFFICULTY_LEVELS.map((n) => (
               <option key={n} value={n}>{n}</option>
             ))}
@@ -49,10 +50,10 @@ export function FilterBar({ track, onStart }) {
       </div>
 
       <button onClick={handleStart} style={startButtonStyle}>
-        Start session →
+        {ui.filters.start}
       </button>
       <p style={{ textAlign: "center", fontSize: "11px", color: "var(--text-muted)", marginTop: "10px" }}>
-        Each session includes 5–15 random exercises
+        {ui.filters.sessionSize}
       </p>
 
       <style>{hoverStyle}</style>

@@ -1,15 +1,8 @@
-// Human-readable labels for exercise type codes (see the exercise_types seed).
-const EXERCISE_TYPE_LABELS = {
-  multiple_choice: "Multiple choice",
-  fill_blank: "Fill in the blank",
-  translate_rev: "Translate",
-  kanji_reading: "Kanji reading",
-  kanji_writing: "Kanji writing",
-  romaji_input: "Romaji",
-};
+import { ui } from "../i18n";
 
+// Human-readable labels for exercise type codes (see the exercise_types seed).
 export function exerciseTypeLabel(code) {
-  return EXERCISE_TYPE_LABELS[code] ?? code;
+  return ui.exerciseTypes[code] ?? code;
 }
 
 // Field holding the text shown before answering, per exercise type.

@@ -1,11 +1,11 @@
-// Languages of the seeded tracks; unknown codes fall back to the raw code.
-const LANG_LABELS = {
-  it: { label: "Italiano", flag: "🇮🇹" },
-  ja: { label: "日本語", flag: "🇯🇵" },
-};
+import { ui } from "../i18n";
+
+// Languages of the seeded tracks (names in their own language); unknown codes fall back to the raw code.
+const LANG_FLAGS = { it: "🇮🇹", ja: "🇯🇵" };
 
 export function LangBadge({ code }) {
-  const info = LANG_LABELS[code?.toLowerCase()] || { label: code, flag: "🌐" };
+  const key = code?.toLowerCase();
+  const info = { label: ui.languages[key] ?? code, flag: LANG_FLAGS[key] ?? "🌐" };
   return (
     <span style={{
       display: "inline-flex",

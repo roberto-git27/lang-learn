@@ -1,6 +1,7 @@
 /* Shared micro-components and styles used by the admin panels and the Studio page */
 import { exerciseTypeLabel } from "../../utils/exerciseTypes";
 import { RubyText } from "../../components/RubyText";
+import { ui } from "../../i18n";
 
 export function ErrorBox({ message }) {
   return (
@@ -114,11 +115,11 @@ export function PayloadDisplay({ type, payload, annotations = {} }) {
   if (type === "translate_rev") {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {payload.prompt && <PayloadRow label="Prompt" value={payload.prompt} segments={annotations.prompt} />}
-        <PayloadRow label="Expected answer" value={payload.expected} highlight />
+        {payload.prompt && <PayloadRow label={ui.payload.prompt} value={payload.prompt} segments={annotations.prompt} />}
+        <PayloadRow label={ui.payload.expected} value={payload.expected} highlight />
         {payload.alternatives?.length > 0 && (
           <div>
-            <p style={fieldLabel}>Accepted alternatives</p>
+            <p style={fieldLabel}>{ui.payload.alternatives}</p>
             <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginTop: "4px" }}>
               {payload.alternatives.map((a, i) => <span key={i} style={altChip}>{a}</span>)}
             </div>
@@ -131,9 +132,9 @@ export function PayloadDisplay({ type, payload, annotations = {} }) {
   if (type === "romaji_input") {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        <PayloadRow label="Sentence (underlined: word to write in romaji)" value={payload.sentence} segments={annotations.sentence} />
-        <PayloadRow label="Expected answer (computed)" value={payload.expected} highlight />
-        <PayloadRow label="Also accepted" value={(payload.accepted || []).join(" · ")} />
+        <PayloadRow label={ui.payload.romajiSentence} value={payload.sentence} segments={annotations.sentence} />
+        <PayloadRow label={ui.payload.expectedComputed} value={payload.expected} highlight />
+        <PayloadRow label={ui.payload.alsoAccepted} value={(payload.accepted || []).join(" · ")} />
         {payload.explanation && <PayloadRow label="Explanation" value={payload.explanation} segments={annotations.explanation} />}
       </div>
     );
@@ -143,16 +144,16 @@ export function PayloadDisplay({ type, payload, annotations = {} }) {
     const field = type === "multiple_choice" ? "question" : "sentence";
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {payload[field] && <PayloadRow label={type === "multiple_choice" ? "Question" : "Sentence (underlined: the word asked about)"} value={payload[field]} segments={annotations[field]} />}
+        {payload[field] && <PayloadRow label={type === "multiple_choice" ? ui.payload.question : ui.payload.focusSentence} value={payload[field]} segments={annotations[field]} />}
         {payload.options?.length > 0 && (
           <div>
-            <p style={fieldLabel}>Options</p>
+            <p style={fieldLabel}>{ui.payload.options}</p>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "6px" }}>
               {payload.options.map((opt, i) => (
                 <div key={i} style={optionRow(i === payload.correct_index)}>
                   <span style={optionIndex(i === payload.correct_index)}>{i}</span>
                   <span style={{ fontSize: "14px", color: i === payload.correct_index ? "var(--success)" : "var(--text-primary)", lineHeight: 1.8 }}><RubyText text={opt} segments={annotations.options?.[i]} /></span>
-                  {i === payload.correct_index && <span style={correctMark}>✓ correct</span>}
+                  {i === payload.correct_index && <span style={correctMark}>{ui.payload.correct}</span>}
                 </div>
               ))}
             </div>
@@ -166,10 +167,10 @@ export function PayloadDisplay({ type, payload, annotations = {} }) {
   if (type === "fill_blank") {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-        {payload.sentence_with_blank && <PayloadRow label="Sentence with blank" value={payload.sentence_with_blank} segments={annotations.sentence_with_blank} />}
+        {payload.sentence_with_blank && <PayloadRow label={ui.payload.blankSentence} value={payload.sentence_with_blank} segments={annotations.sentence_with_blank} />}
         {payload.options?.length > 0 && (
           <div>
-            <p style={fieldLabel}>Options</p>
+            <p style={fieldLabel}>{ui.payload.options}</p>
             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "6px" }}>
               {payload.options.map((opt, i) => (
                 <span key={i} style={{ padding: "5px 12px", borderRadius: "999px", fontSize: "13px", fontWeight: 500, background: opt === payload.correct ? "var(--success-bg)" : "rgba(255,255,255,0.04)", border: `1px solid ${opt === payload.correct ? "var(--success-border)" : "var(--border)"}`, color: opt === payload.correct ? "var(--success)" : "var(--text-primary)" }}>

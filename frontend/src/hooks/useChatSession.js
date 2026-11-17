@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 import { identityHeaders } from "../utils/identity";
+import { ui } from "../i18n";
 
 const API_BASE = "/api/chat";
 
@@ -99,7 +100,7 @@ export function useChatSession(track) {
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || `HTTP error ${response.status}`);
+        throw new Error(body.detail || ui.chat.httpError(response.status));
       }
 
       await _parseSSEStream(response, (event) => {
@@ -150,7 +151,7 @@ export function useChatSession(track) {
         }
       });
     } catch (err) {
-      setError(err.message || "Network error");
+      setError(err.message || ui.chat.networkError);
     } finally {
       setStreaming(false);
     }
@@ -182,7 +183,7 @@ export function useChatSession(track) {
 
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        throw new Error(body.detail || `HTTP error ${response.status}`);
+        throw new Error(body.detail || ui.chat.httpError(response.status));
       }
 
       await _parseSSEStream(response, (event) => {
@@ -217,7 +218,7 @@ export function useChatSession(track) {
         }
       });
     } catch (err) {
-      setError(err.message || "Network error");
+      setError(err.message || ui.chat.networkError);
       setPhase("negotiating");
     } finally {
       setStreaming(false);

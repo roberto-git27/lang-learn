@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { identityHeaders } from "../../utils/identity";
 import { ErrorBox, Spinner, inputStyle, labelStyle, submitButtonStyle } from "./_shared";
+import { ui } from "../../i18n";
 
 async function requestJson(url, options = {}) {
   const res = await fetch(url, options);
   const data = await res.json();
-  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg || "Request failed");
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg || ui.common.requestFailed);
   return data;
 }
 
@@ -39,7 +40,6 @@ export function ReadingsPanel({ track, initialSurface = "" }) {
     }
   };
 
-  const updated = (n) => `${n} exercise${n === 1 ? "" : "s"} updated.`;
 
   const save = () => run("save", async () => {
     const res = await requestJson("/api/readings", {
@@ -47,13 +47,13 @@ export function ReadingsPanel({ track, initialSurface = "" }) {
       headers: { "Content-Type": "application/json", ...identityHeaders() },
       body: JSON.stringify({ track: track.code, surface: surface.trim(), reading: reading.trim() }),
     });
-    setNotice(`${res.override.surface} is now read ${res.override.reading} everywhere. ${updated(res.exercises_updated)}`);
+    setNotice(ui.readings.saved(res.override.surface, res.override.reading, res.exercises_updated));
     setSurface(""); setReading("");
   });
 
   const remove = (item) => run(`delete-${item.id}`, async () => {
     const res = await requestJson(`/api/readings/${item.id}?${query}`, { method: "DELETE", headers: identityHeaders() });
-    setNotice(`${item.surface}: back to the computed reading. ${updated(res.exercises_updated)}`);
+    setNotice(ui.readings.removed(item.surface, res.exercises_updated));
   });
 
   const canSave = surface.trim() && reading.trim() && !busy;
@@ -61,25 +61,23 @@ export function ReadingsPanel({ track, initialSurface = "" }) {
   return (
     <div style={cardStyle}>
       <p style={introText}>
-        Furigana and romaji are computed by a dictionary, which sometimes picks the wrong reading (五本 → ごぽん).
-        Fix a word here once: the reading is used everywhere in the track, and the exercises that contain the word are
-        updated. A word that is part of a longer one is not touched (本 does not change 日本).
+        {ui.readings.intro}
       </p>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "flex-end" }}>
         <label style={{ flex: "1 1 140px" }}>
-          <span style={labelStyle}>Word (with kanji)</span>
+          <span style={labelStyle}>{ui.readings.word}</span>
           <input value={surface} onChange={(e) => setSurface(e.target.value)} maxLength={32} placeholder="五本" style={inputStyle} />
         </label>
         <label style={{ flex: "1 1 140px" }}>
-          <span style={labelStyle}>Reading (kana)</span>
+          <span style={labelStyle}>{ui.readings.reading}</span>
           <input
             value={reading} onChange={(e) => setReading(e.target.value)} maxLength={64} placeholder="ごほん" style={inputStyle}
             onKeyDown={(e) => { if (e.key === "Enter" && canSave) save(); }}
           />
         </label>
         <button onClick={save} disabled={!canSave} style={{ ...submitButtonStyle(!canSave), width: "auto", padding: "10px 18px" }}>
-          {busy === "save" ? <Spinner /> : "Save reading"}
+          {busy === "save" ? <Spinner /> : ui.readings.save}
         </button>
       </div>
 
@@ -88,14 +86,14 @@ export function ReadingsPanel({ track, initialSurface = "" }) {
 
       <div style={{ marginTop: "18px", display: "flex", flexDirection: "column", gap: "6px" }}>
         {items === null && !error && <Spinner />}
-        {items?.length === 0 && <p style={introText}>No reading fixed by hand yet.</p>}
+        {items?.length === 0 && <p style={introText}>{ui.readings.empty}</p>}
         {items?.map((item) => (
           <div key={item.id} style={rowStyle}>
             <ruby style={{ fontSize: "18px", color: "var(--text-primary)" }}>{item.surface}<rt style={{ fontSize: "10px" }}>{item.reading}</rt></ruby>
             <span style={{ fontSize: "12px", color: "var(--text-secondary)", flex: 1 }}>{item.reading}</span>
             <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{item.user_display_name ?? ""}</span>
-            <button onClick={() => remove(item)} disabled={!!busy} style={deleteBtn} title="Back to the computed reading">
-              {busy === `delete-${item.id}` ? <Spinner /> : "Remove"}
+            <button onClick={() => remove(item)} disabled={!!busy} style={deleteBtn} title={ui.readings.removeTitle}>
+              {busy === `delete-${item.id}` ? <Spinner /> : ui.readings.remove}
             </button>
           </div>
         ))}

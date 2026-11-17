@@ -5,6 +5,7 @@ import { DIFFICULTY_LEVELS } from "../../utils/levels";
 import {
   ErrorBox, Spinner, btnHover, selectStyle, diffBadgeStyle, tagStyle, ExTypeBadge, PayloadDisplay,
 } from "./_shared";
+import { ui } from "../../i18n";
 
 const LIMIT = 20;
 
@@ -32,7 +33,7 @@ export function ReviewPanel({ track }) {
     try {
       const res = await fetch(`/api/exercises/review-queue?${buildQuery(currentOffset)}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to load the review queue");
+      if (!res.ok) throw new Error(data.detail || ui.review.loadFailed);
       setItems((prev) => (append ? [...prev, ...data.items] : data.items));
       setTotal(data.total);
       setOffset(currentOffset);
@@ -54,7 +55,7 @@ export function ReviewPanel({ track }) {
         body: JSON.stringify({ human_checked: nextHumanChecked }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Update failed");
+      if (!res.ok) throw new Error(data.detail || ui.review.updateFailed);
       // The item no longer matches the current human_checked filter — drop it.
       setItems((prev) => prev.filter((it) => it.id !== exerciseId));
       setTotal((prev) => Math.max(0, prev - 1));
@@ -65,23 +66,23 @@ export function ReviewPanel({ track }) {
 
   return (
     <div style={cardStyle}>
-      <SectionTitle>Review queue</SectionTitle>
+      <SectionTitle>{ui.review.title}</SectionTitle>
       <p style={subtitleStyle}>
-        Exercises already in the DB: mark the good ones as verified — the agent prefers them as style examples for new generations.
+        {ui.review.subtitle}
       </p>
 
       <div style={filterRow}>
         <div style={{ display: "flex", gap: "6px" }}>
-          <button onClick={() => setHumanChecked(false)} style={modeBtn(!humanChecked)}>To review</button>
-          <button onClick={() => setHumanChecked(true)} style={modeBtn(humanChecked)}>Verified</button>
+          <button onClick={() => setHumanChecked(false)} style={modeBtn(!humanChecked)}>{ui.review.toReview}</button>
+          <button onClick={() => setHumanChecked(true)} style={modeBtn(humanChecked)}>{ui.review.verified}</button>
         </div>
 
         <select value={exerciseType} onChange={(e) => setExerciseType(e.target.value)} style={selectStyle}>
-          <option value="">Any type</option>
+          <option value="">{ui.review.anyType}</option>
           {track.exercise_types.map(({ code }) => <option key={code} value={code}>{exerciseTypeLabel(code)}</option>)}
         </select>
         <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} style={selectStyle}>
-          <option value="">Any difficulty</option>
+          <option value="">{ui.review.anyDifficulty}</option>
           {DIFFICULTY_LEVELS.map((d) => <option key={d} value={d}>Difficulty {d}</option>)}
         </select>
       </div>
@@ -90,7 +91,7 @@ export function ReviewPanel({ track }) {
       {actionError && <ErrorBox message={actionError} />}
 
       {!loading && items.length === 0 && (
-        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "16px" }}>No exercises match these filters.</p>
+        <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "16px" }}>{ui.review.empty}</p>
       )}
 
       <div style={{ marginTop: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -103,7 +104,7 @@ export function ReviewPanel({ track }) {
 
       {!loading && offset + items.length < total && (
         <button onClick={() => load(offset + LIMIT, true)} style={loadMoreBtn}>
-          Load more ({total - offset - items.length} remaining)
+          {ui.common.loadMore(total - offset - items.length)}
         </button>
       )}
       <style>{btnHover}</style>
@@ -119,8 +120,8 @@ function QueueItemCard({ exercise, onSetStatus }) {
     <div style={itemCardStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "10px" }}>
         <ExTypeBadge code={exercise.exercise_type} />
-        <span style={tagStyle}>{exercise.origin === "human_import" ? "imported" : "AI-generated"}</span>
-        <span style={diffBadgeStyle}>difficulty {exercise.difficulty}</span>
+        <span style={tagStyle}>{exercise.origin === "human_import" ? ui.review.imported : ui.review.aiGenerated}</span>
+        <span style={diffBadgeStyle}>{ui.common.difficulty(exercise.difficulty)}</span>
         {exercise.topics.map((t) => <span key={t} style={tagStyle}>{t}</span>)}
         <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--text-muted)" }}>
           {new Date(exercise.created_at).toLocaleDateString()}
@@ -139,13 +140,13 @@ function QueueItemCard({ exercise, onSetStatus }) {
       <div style={{ marginTop: "12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
         <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
           {exercise.human_checked
-            ? `Verified by ${exercise.human_checked_by || "—"} on ${new Date(exercise.human_checked_at).toLocaleString()}`
-            : "Not verified yet"}
+            ? ui.review.verifiedBy(exercise.human_checked_by || "—", new Date(exercise.human_checked_at).toLocaleString())
+            : ui.review.notVerified}
         </span>
         {exercise.human_checked ? (
-          <button onClick={() => onSetStatus(exercise.id, false)} style={secondaryBtn}>Remove verification</button>
+          <button onClick={() => onSetStatus(exercise.id, false)} style={secondaryBtn}>{ui.review.unverify}</button>
         ) : (
-          <button onClick={() => onSetStatus(exercise.id, true)} style={approveBtn}>✓ Approve</button>
+          <button onClick={() => onSetStatus(exercise.id, true)} style={approveBtn}>{ui.review.approve}</button>
         )}
       </div>
     </div>

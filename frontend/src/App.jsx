@@ -10,12 +10,13 @@ import { StudioPage } from "./pages/StudioPage";
 import {
   getStoredProfileId, setStoredProfileId, getStoredTrack, setStoredTrack, identityHeaders,
 } from "./utils/identity";
+import { ui } from "./i18n";
 
 const NAV_ITEMS = [
-  { id: "chat",     label: "Chat" },
-  { id: "practice", label: "Practice" },
-  { id: "studio",   label: "Studio" },
-  { id: "admin",    label: "Admin" },
+  { id: "chat",     label: ui.app.nav.chat },
+  { id: "practice", label: ui.app.nav.practice },
+  { id: "studio",   label: ui.app.nav.studio },
+  { id: "admin",    label: ui.app.nav.admin },
 ];
 
 // Most recently used track of the profile, unless the stored one is still valid.
@@ -41,7 +42,7 @@ export default function App() {
   useEffect(() => {
     Promise.all([fetch("/api/tracks"), fetch("/api/users")])
       .then(async ([tracksRes, usersRes]) => {
-        if (!tracksRes.ok || !usersRes.ok) throw new Error("Backend not reachable");
+        if (!tracksRes.ok || !usersRes.ok) throw new Error(ui.app.backendDown);
         const [allTracks, profiles] = await Promise.all([tracksRes.json(), usersRes.json()]);
         setTracks(allTracks);
         const stored = profiles.find((p) => p.id === getStoredProfileId());
@@ -82,7 +83,7 @@ export default function App() {
     try {
       const res = await fetch(`/api/users/${profile.id}/tracks/${encodeURIComponent(code)}`, { method: "PUT" });
       const updated = await res.json();
-      if (!res.ok) throw new Error(updated.detail || "Could not switch track");
+      if (!res.ok) throw new Error(updated.detail || ui.app.trackSwitchFailed);
       setProfile(updated);
       setTrackCode(code);
       setStoredTrack(code);
@@ -128,7 +129,7 @@ export default function App() {
         <div style={errorBoxStyle}>
           <span style={{ fontSize: "28px" }}>⚠</span>
           <p style={{ color: "var(--error)", fontWeight: 600, fontSize: "15px" }}>{bootError}</p>
-          <button onClick={() => window.location.reload()} style={retryButtonStyle}>Reload</button>
+          <button onClick={() => window.location.reload()} style={retryButtonStyle}>{ui.app.reload}</button>
         </div>
       </div>
     );
@@ -172,7 +173,7 @@ export default function App() {
         {page === "practice" && phase === "session" && (
           <div style={sessionBadge}>
             <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-secondary)" }}>
-              {sessionExercises.length} exercises
+              {ui.app.exerciseCount(sessionExercises.length)}
             </span>
           </div>
         )}
@@ -180,20 +181,20 @@ export default function App() {
         <select
           value={track.code}
           onChange={(e) => handleTrackChange(e.target.value)}
-          title="Track you are studying"
+          title={ui.app.trackTitle}
           style={trackSelectStyle}
         >
           {profile.tracks.map((code) => (
             <option key={code} value={code}>{tracks.find((t) => t.code === code)?.name ?? code}</option>
           ))}
           {otherTracks.length > 0 && (
-            <optgroup label="Add a track">
+            <optgroup label={ui.app.addTrack}>
               {otherTracks.map((t) => <option key={t.code} value={t.code}>+ {t.name}</option>)}
             </optgroup>
           )}
         </select>
 
-        <button onClick={handleSwitchProfile} title="Switch profile" style={profileChipStyle}>
+        <button onClick={handleSwitchProfile} title={ui.app.switchProfile} style={profileChipStyle}>
           {profile.display_name}
         </button>
       </header>
@@ -207,11 +208,11 @@ export default function App() {
               <div style={stageStyle}>
                 <div style={{ textAlign: "center", marginBottom: "40px" }}>
                   <h1 style={titleStyle}>
-                    Practice {track.name}<br />
-                    <span style={{ color: "var(--accent)" }}>every day.</span>
+                    {ui.practice.title(track.name)}<br />
+                    <span style={{ color: "var(--accent)" }}>{ui.practice.titleAccent}</span>
                   </h1>
                   <p style={subtitleStyle}>
-                    Pick your settings and start a practice session.
+                    {ui.practice.subtitle}
                   </p>
                 </div>
                 <FilterBar key={track.code} track={track} onStart={handleStart} />
@@ -224,7 +225,7 @@ export default function App() {
                 <div style={loadingStyle}>
                   <div style={spinnerStyle} />
                   <p style={{ color: "var(--text-secondary)", fontSize: "14px" }}>
-                    Preparing session…
+                    {ui.practice.preparing}
                   </p>
                 </div>
                 <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -238,7 +239,7 @@ export default function App() {
                   <span style={{ fontSize: "28px" }}>⚠</span>
                   <p style={{ color: "var(--error)", fontWeight: 600, fontSize: "15px" }}>{error}</p>
                   <button onClick={resetPractice} style={retryButtonStyle}>
-                    Try again
+                    {ui.common.tryAgain}
                   </button>
                 </div>
               </div>
@@ -279,7 +280,7 @@ export default function App() {
 
       {/* Footer */}
       <footer style={footerStyle}>
-        <span>LangLearn — Powered by AI</span>
+        <span>{ui.app.footer}</span>
       </footer>
 
       <style>{globalAnimations}</style>

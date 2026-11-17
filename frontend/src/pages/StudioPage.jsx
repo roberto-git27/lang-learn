@@ -5,16 +5,7 @@ import {
   ErrorBox, Spinner, btnHover, labelStyle, inputStyle, diffBadgeStyle, tagStyle, submitButtonStyle,
   ExTypeBadge, PayloadDisplay,
 } from "./admin/_shared";
-
-// What each type needs besides `sentence` and `translation` (full reference: sample/README.md).
-const TYPE_NOTES = {
-  multiple_choice: "question + 4 options",
-  fill_blank: "sentence with ___ or 【　】 + 2–6 options",
-  translate_rev: "alternative: (repeatable) — other accepted translations",
-  kanji_reading: "focus (a kanji word of the sentence) + 4 kana options",
-  kanji_writing: "focus (a kana word of the sentence) + 4 kanji options",
-  romaji_input: "focus; answer: (optional) is checked against the computed romaji",
-};
+import { Rich, ui } from "../i18n";
 
 const IMPORT_EXAMPLE = `---
 difficulty: 1              # default for every block (1–10)
@@ -63,23 +54,18 @@ const TERM_LIST_EXAMPLE = `term,reading,meaning
 こんにちは,,buongiorno`;
 
 const MODES = {
-  import: { label: "Import .md", example: IMPORT_EXAMPLE },
-  generate: { label: "Generate with AI", example: GENERATE_EXAMPLE },
-  terms: { label: "Vocabulary", example: TERMS_EXAMPLE },
+  import: { label: ui.studio.modes.import, example: IMPORT_EXAMPLE },
+  generate: { label: ui.studio.modes.generate, example: GENERATE_EXAMPLE },
+  terms: { label: ui.studio.modes.terms, example: TERMS_EXAMPLE },
 };
 
-const PLACEHOLDERS = {
-  import: "Paste a .md of exercises, or open a file.\n\n",
-  generate: "Write a generation request, or open one (e.g. sample/ja_generate1.md).\n\n",
-  terms: "Paste any text, or open one (e.g. sample/ja_story1.md): its words are extracted in dictionary form. A .csv term list works too.\n\n",
-};
 
 const FRONT_MATTER_MODE = /^---\s*\n(?:.*\n)*?mode:\s*(import|generate|terms)\b.*\n(?:.*\n)*?---/;
 
 async function requestJson(url, options = {}) {
   const res = await fetch(url, options);
   const data = await res.json();
-  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg || "Request failed");
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : data.detail?.[0]?.msg || ui.common.requestFailed);
   return data;
 }
 
@@ -91,7 +77,7 @@ const postJson = (url, body) => requestJson(url, {
 
 export function StudioPage({ track }) {
   const [mode, setMode] = useState("import");
-  const [sources, setSources] = useState(() => Object.fromEntries(Object.keys(MODES).map((m) => [m, { text: "", name: "pasted text" }])));
+  const [sources, setSources] = useState(() => Object.fromEntries(Object.keys(MODES).map((m) => [m, { text: "", name: ui.studio.pastedText }])));
   const [showFormat, setShowFormat] = useState(false);
 
   const [preview, setPreview] = useState(null);   // import preview
@@ -141,7 +127,7 @@ export function StudioPage({ track }) {
     }
   };
 
-  const body = () => ({ track: track.code, text: source.text, source_name: source.name.trim() || "pasted text" });
+  const body = () => ({ track: track.code, text: source.text, source_name: source.name.trim() || ui.studio.pastedText });
 
   const handlePreview = () => run("preview", async () => setPreview(await postJson("/api/studio/imports/preview", body())));
 
@@ -150,14 +136,7 @@ export function StudioPage({ track }) {
     const res = await postJson("/api/studio/imports/normalize", body());
     setSource("import", { text: res.text });
     setBeforeFix(original);
-    const skipped = res.skipped.map((s) => `line ${s.line}: ${s.reason}`).join("; ");
-    setNotice(
-      `The AI rewrote ${res.rewritten_segments} of ${res.sent_segments} part${res.sent_segments === 1 ? "" : "s"} as ` +
-      `${res.exercise_count} exercise${res.exercise_count === 1 ? "" : "s"} (${res.model}, ` +
-      `${res.input_tokens + res.output_tokens} tokens, ${(res.duration_ms / 1000).toFixed(1)} s). ` +
-      "Content is copied, not invented: compare each block with its <!-- source --> line, fill in what is missing, then Preview." +
-      (skipped ? ` Left as they were — ${skipped}.` : ""),
-    );
+    setNotice(ui.studio.fixed(res));
   });
 
   const restoreBeforeFix = () => {
@@ -169,7 +148,7 @@ export function StudioPage({ track }) {
     const job = await postJson("/api/studio/imports", body());
     setPreview(null);
     setBeforeFix(null);
-    setNotice(`Imported ${job.created_count} exercise${job.created_count === 1 ? "" : "s"} from ${job.source_name}: verified and available in Practice and Chat.`);
+    setNotice(ui.studio.imported(job.created_count, job.source_name));
     setHistoryVersion((v) => v + 1);
   });
 
@@ -178,8 +157,7 @@ export function StudioPage({ track }) {
   const handleSaveTerms = () => run("saveTerms", async () => {
     const job = await postJson("/api/studio/terms", body());
     setTermsPreview(null);
-    const updates = job.meaning_updates ? ` ${job.meaning_updates} known term${job.meaning_updates === 1 ? "" : "s"} got the list's meaning.` : "";
-    setNotice(`Saved ${job.created_count} new term${job.created_count === 1 ? "" : "s"} from ${job.source_name}${job.duplicate_count ? ` (${job.duplicate_count} already known)` : ""}.${updates} Missing meanings: "Translate missing meanings" below, or write them by hand.`);
+    setNotice(ui.studio.termsSaved(job));
     setHistoryVersion((v) => v + 1);
     setVocabularyVersion((v) => v + 1);
   });
@@ -192,7 +170,7 @@ export function StudioPage({ track }) {
   const handleSave = (keep) => run("save", async () => {
     const job = await postJson(`/api/studio/generations/${draft.id}/save`, { track: track.code, keep });
     setDraft(null);
-    setNotice(`Saved ${job.created_count} generated exercise${job.created_count === 1 ? "" : "s"}: they are in Admin → Review, waiting for approval.`);
+    setNotice(ui.studio.draftSaved(job.created_count));
     setHistoryVersion((v) => v + 1);
   });
 
@@ -214,8 +192,8 @@ export function StudioPage({ track }) {
   });
 
   const editAsMarkdown = () => {
-    loadText(draft.markdown, `${draft.source_name} (edited)`, "import");
-    setNotice("The draft is now in the import editor: fix what you want, then Preview and Import (as verified exercises). Discard the draft if you no longer need it.");
+    loadText(draft.markdown, ui.studio.editedName(draft.source_name), "import");
+    setNotice(ui.studio.draftInEditor);
   };
 
   const openDraft = (job) => { setDraft(job); switchMode("generate"); };
@@ -225,12 +203,9 @@ export function StudioPage({ track }) {
   return (
     <div style={wrapStyle}>
       <div style={{ marginBottom: "28px" }}>
-        <h1 style={pageTitle}>Studio</h1>
+        <h1 style={pageTitle}>{ui.studio.title}</h1>
         <p style={pageSubtitle}>
-          <b>Import</b> exercises you wrote or checked yourself from a <code>.md</code> file (no AI, already verified), or
-          <b> generate</b> new ones with the AI from a request — they are drafted, you keep what you like, and they
-          go to the review queue. Verified exercises become the examples the AI imitates. <b>Vocabulary</b> extracts the
-          words of any text (dictionary forms, never stored twice) and keeps their meanings.
+          <Rich text={ui.studio.subtitle} />
         </p>
       </div>
 
@@ -242,20 +217,20 @@ export function StudioPage({ track }) {
 
       <div style={cardStyle}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap", marginBottom: "14px" }}>
-          <button onClick={() => fileInput.current?.click()} style={secondaryBtn}>{mode === "terms" ? "Open .md / .csv file…" : "Open .md file…"}</button>
+          <button onClick={() => fileInput.current?.click()} style={secondaryBtn}>{mode === "terms" ? ui.studio.openFileTerms : ui.studio.openFile}</button>
           <input ref={fileInput} type="file" accept=".md,.markdown,.txt,.csv,.tsv,text/markdown,text/plain,text/csv" onChange={openFile} style={{ display: "none" }} />
           <input
             value={source.name} onChange={(e) => setSource(mode, { name: e.target.value })} maxLength={255}
-            title="Name kept with the job" style={{ ...inputStyle, flex: 1, minWidth: "160px", padding: "7px 11px", fontSize: "13px" }}
+            title={ui.studio.nameTitle} style={{ ...inputStyle, flex: 1, minWidth: "160px", padding: "7px 11px", fontSize: "13px" }}
           />
-          <button onClick={() => setShowFormat((v) => !v)} style={linkBtn}>{showFormat ? "Hide format" : "Format guide"}</button>
+          <button onClick={() => setShowFormat((v) => !v)} style={linkBtn}>{showFormat ? ui.studio.hideFormat : ui.studio.formatGuide}</button>
         </div>
 
         {showFormat && <FormatGuide mode={mode} track={track} />}
 
         <textarea
           value={source.text} onChange={(e) => setSource(mode, { text: e.target.value })} spellCheck={false}
-          placeholder={PLACEHOLDERS[mode] + MODES[mode].example}
+          placeholder={ui.studio.placeholders[mode] + "\n\n" + MODES[mode].example}
           style={textareaStyle}
         />
 
@@ -263,24 +238,24 @@ export function StudioPage({ track }) {
 
         {mode === "import" && (
           <button onClick={handlePreview} disabled={!canRun} style={{ ...submitButtonStyle(!canRun), marginTop: "14px" }}>
-            {busy === "preview" ? <Spinner /> : "Preview →"}
+            {busy === "preview" ? <Spinner /> : ui.studio.preview}
           </button>
         )}
         {mode === "terms" && (
           <button onClick={handleExtractTerms} disabled={!canRun} style={{ ...submitButtonStyle(!canRun), marginTop: "14px" }}>
-            {busy === "extract" ? <Spinner /> : "Extract terms (no AI) →"}
+            {busy === "extract" ? <Spinner /> : ui.studio.extractTerms}
           </button>
         )}
         {mode === "generate" && (
           <button onClick={handleGenerate} disabled={!canRun || !!draft} style={{ ...submitButtonStyle(!canRun || !!draft), marginTop: "14px" }}>
-            {busy === "generate" ? <><Spinner /> Generating… this can take a minute</> : draft ? "Save or discard the current draft first" : "Generate with AI →"}
+            {busy === "generate" ? <><Spinner /> {ui.studio.generating}</> : draft ? ui.studio.draftPending : ui.studio.generate}
           </button>
         )}
 
         {notice && <p style={successBox}>✓ {notice}</p>}
         {mode === "import" && beforeFix !== null && (
           <button onClick={restoreBeforeFix} disabled={!!busy} style={{ ...linkBtn, marginTop: "10px" }}>
-            ↺ Restore the text before the AI fix
+            {ui.studio.restoreBeforeFix}
           </button>
         )}
       </div>
@@ -310,43 +285,32 @@ function FormatGuide({ mode, track }) {
       <pre style={preStyle}>{MODES[mode].example}</pre>
       {mode === "import" ? (
         <>
-          <p style={{ ...labelStyle, margin: "14px 0 6px" }}>Exercise types on this track</p>
+          <p style={{ ...labelStyle, margin: "14px 0 6px" }}>{ui.studio.guide.types}</p>
           <ul style={{ listStyle: "none", display: "flex", flexDirection: "column", gap: "4px" }}>
             {track.exercise_types.map(({ code }) => (
               <li key={code} style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-                <code style={codeStyle}>## {code}</code> {TYPE_NOTES[code] ?? ""}
+                <code style={codeStyle}>## {code}</code> {ui.studio.typeNotes[code] ?? ""}
               </li>
             ))}
           </ul>
           <p style={guideNote}>
-            One exercise per <code style={codeStyle}>## type</code> block; options are task-list items, exactly one <code style={codeStyle}>[x]</code>;
-            explanation is optional. Keys may also be written in Italian (frase, traduzione, domanda, spiegazione, alternativa, risposta,
-            difficoltà, argomenti). Text outside a block is ignored; <code style={codeStyle}># comments</code> only in the front matter.
-            Readings (furigana, romaji) are computed, never written.
+            <Rich text={ui.studio.guide.import} codeStyle={codeStyle} />
           </p>
         </>
       ) : mode === "terms" ? (
         <>
           <p style={guideNote}>
-            Any text: its content words are extracted in dictionary form (言いました → 言う), without particles or auxiliaries,
-            and compared with the vocabulary already stored — the same word is never stored twice (かみ and 髪 are one term).
-            Headings, comments and the front matter are ignored. No AI: meanings are added below, on request.
+            {ui.studio.guide.terms}
           </p>
-          <p style={{ ...labelStyle, margin: "14px 0 6px" }}>Or a term list (.csv)</p>
+          <p style={{ ...labelStyle, margin: "14px 0 6px" }}>{ui.studio.guide.termListTitle}</p>
           <pre style={preStyle}>{TERM_LIST_EXAMPLE}</pre>
           <p style={guideNote}>
-            A header row, then one term per line (comma, semicolon or tab). <code style={codeStyle}>reading</code> (kana) and{" "}
-            <code style={codeStyle}>meaning</code> are optional; Italian headers work too (termine, lettura, significato).
-            A word the dictionary knows becomes the same term as in texts (食べます → 食べる); anything else is kept whole
-            (お茶, こんにちは) — give the reading when the computed one is wrong. Meanings here are yours: they also fill
-            known terms without one, or with the AI's, never one written by hand. Write words in kanji when they have them.
+            <Rich text={ui.studio.guide.termList} codeStyle={codeStyle} />
           </p>
         </>
       ) : (
         <p style={guideNote}>
-          Everything that is not front matter or a term is sent to the AI as your request. Each exercise is checked before it
-          reaches the draft (valid structure, kanji of the level, the term really used); what fails is retried once.
-          Types on this track: {track.exercise_types.map(({ code }) => code).join(", ")}. At most 30 exercises per request.
+          {ui.studio.guide.generate(track.exercise_types.map(({ code }) => code).join(", "))}
         </p>
       )}
     </div>
@@ -361,31 +325,29 @@ function ImportPreview({ preview, busy, onImport, onFix }) {
   const blocked = preview.errors.length > 0 || preview.ready_count === 0 || !!busy;
   return (
     <div style={{ ...cardStyle, marginTop: "16px", animation: "fadeSlideIn 0.3s ease forwards" }}>
-      <h3 style={sectionTitle}>Preview</h3>
+      <h3 style={sectionTitle}>{ui.studio.previewTitle}</h3>
       {preview.errors.map((e) => <ErrorBox key={e} message={e} />)}
       {preview.items.length > 0 && <Counts items={preview.items} />}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-        {preview.items.map((item) => <PreviewItem key={item.line} item={item} label={`line ${item.line}`} />)}
+        {preview.items.map((item) => <PreviewItem key={item.line} item={item} label={ui.studio.line(item.line)} />)}
       </div>
 
       <button onClick={onImport} disabled={blocked} style={{ ...submitButtonStyle(blocked), marginTop: "18px" }}>
-        {busy === "import" ? <Spinner /> : `Import ${preview.ready_count} exercise${preview.ready_count === 1 ? "" : "s"}`}
+        {busy === "import" ? <Spinner /> : ui.studio.importCount(preview.ready_count)}
       </button>
       {preview.error_count > 0 && preview.ready_count > 0 && (
         <p style={hintText}>
-          Blocks with errors are skipped: fix them and import the file again — what is already imported is recognized as a duplicate.
+          {ui.studio.errorsSkipped}
         </p>
       )}
       {fixable && (
         <div style={{ marginTop: "14px" }}>
           <button onClick={onFix} disabled={!!busy} style={secondaryBtn}>
-            {busy === "fix" ? <><Spinner /> Fixing…</> : "Fix with AI"}
+            {busy === "fix" ? <><Spinner /> {ui.studio.fixing}</> : ui.studio.fix}
           </button>
           <p style={hintText}>
-            A cheap model rewrites the blocks with errors and any text outside the blocks (e.g. exercises pasted from a
-            workbook) in this format, copying the content without inventing it. Valid blocks and the front matter are
-            not sent. The result goes back to the editor: check it, then Preview again.
+            {ui.studio.fixHint}
           </p>
         </div>
       )}
@@ -420,7 +382,7 @@ function GenerationDraft({ draft, busy, error, onSave, onDiscard, onEdit, onRege
 
   return (
     <div style={{ ...cardStyle, marginTop: "16px", animation: "fadeSlideIn 0.3s ease forwards" }}>
-      <h3 style={sectionTitle}>Draft — {draft.source_name}</h3>
+      <h3 style={sectionTitle}>{ui.studio.draftTitle(draft.source_name)}</h3>
       <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "4px" }}>
         {draft.model} · {draft.llm_calls} call{draft.llm_calls === 1 ? "" : "s"} · {draft.input_tokens + draft.output_tokens} tokens
         ({draft.input_tokens} in, {draft.output_tokens} out) · {(draft.duration_ms / 1000).toFixed(1)} s
@@ -438,18 +400,18 @@ function GenerationDraft({ draft, busy, error, onSave, onDiscard, onEdit, onRege
                 <input
                   value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} autoFocus
                   onKeyDown={(e) => { if (e.key === "Enter" && !busy) regenerate(i); }}
-                  placeholder="What to change (optional), e.g. a more natural sentence"
+                  placeholder={ui.studio.regenerateNote}
                   style={{ ...inputStyle, flex: 1, minWidth: "200px", padding: "7px 11px", fontSize: "13px" }}
                 />
                 <button onClick={() => regenerate(i)} disabled={!!busy} style={secondaryBtn}>
-                  {busy === `regenerate-${i}` ? <Spinner /> : "Write it again"}
+                  {busy === `regenerate-${i}` ? <Spinner /> : ui.studio.regenerate}
                 </button>
-                <button onClick={() => { setRewriting(null); setNote(""); }} disabled={!!busy} style={linkBtn}>Cancel</button>
+                <button onClick={() => { setRewriting(null); setNote(""); }} disabled={!!busy} style={linkBtn}>{ui.common.cancel}</button>
                 {error && busy === null && <span style={{ fontSize: "12px", color: "var(--error)" }}>{error}</span>}
               </div>
             ) : (
               <button onClick={() => { setRewriting(i); setNote(""); }} disabled={!!busy} style={{ ...linkBtn, marginTop: "8px" }}>
-                ↻ Write this one again with AI
+                {ui.studio.regenerateOpen}
               </button>
             )}
           </PreviewItem>
@@ -457,11 +419,11 @@ function GenerationDraft({ draft, busy, error, onSave, onDiscard, onEdit, onRege
       </div>
 
       <button onClick={() => onSave([...kept])} disabled={blocked} style={{ ...submitButtonStyle(blocked), marginTop: "18px" }}>
-        {busy === "save" ? <Spinner /> : `Save ${kept.size} exercise${kept.size === 1 ? "" : "s"} to the review queue`}
+        {busy === "save" ? <Spinner /> : ui.studio.saveDraft(kept.size)}
       </button>
       <div style={{ display: "flex", justifyContent: "center", gap: "18px", marginTop: "12px" }}>
-        {draft.markdown && <button onClick={onEdit} disabled={!!busy} style={linkBtn}>Edit as .md and import by hand</button>}
-        <button onClick={onDiscard} disabled={!!busy} style={{ ...linkBtn, color: "var(--error)" }}>Discard the draft</button>
+        {draft.markdown && <button onClick={onEdit} disabled={!!busy} style={linkBtn}>{ui.studio.editAsMarkdown}</button>}
+        <button onClick={onDiscard} disabled={!!busy} style={{ ...linkBtn, color: "var(--error)" }}>{ui.studio.discard}</button>
       </div>
     </div>
   );
@@ -473,9 +435,9 @@ function Counts({ items }) {
   const count = (status) => items.filter((it) => it.status === status).length;
   return (
     <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "10px 0 16px" }}>
-      <span style={countChip("ready")}>{count("ready")} ready</span>
-      <span style={countChip("duplicate")}>{count("duplicate")} duplicate</span>
-      <span style={countChip("error")}>{count("error")} with errors</span>
+      <span style={countChip("ready")}>{ui.studio.counts.ready(count("ready"))}</span>
+      <span style={countChip("duplicate")}>{ui.studio.counts.duplicate(count("duplicate"))}</span>
+      <span style={countChip("error")}>{ui.studio.counts.error(count("error"))}</span>
     </div>
   );
 }
@@ -485,12 +447,12 @@ function PreviewItem({ item, label, selectable = false, selected = false, onTogg
   return (
     <div style={itemCard(item.status, dimmed)}>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: item.payload ? "10px" : "6px" }}>
-        {selectable && <input type="checkbox" checked={selected} onChange={onToggle} title="Keep this exercise" style={{ accentColor: "var(--accent)" }} />}
-        <span style={countChip(item.status)}>{item.status}</span>
+        {selectable && <input type="checkbox" checked={selected} onChange={onToggle} title={ui.studio.keepTitle} style={{ accentColor: "var(--accent)" }} />}
+        <span style={countChip(item.status)}>{ui.studio.status[item.status] ?? item.status}</span>
         <span style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{label}</span>
         {item.payload ? <ExTypeBadge code={item.exercise_type} /> : <span style={tagStyle}>{exerciseTypeLabel(item.exercise_type)}</span>}
         {item.term && <span style={termChip}>{item.term}</span>}
-        {item.difficulty && <span style={diffBadgeStyle}>difficulty {item.difficulty}</span>}
+        {item.difficulty && <span style={diffBadgeStyle}>{ui.common.difficulty(item.difficulty)}</span>}
         {item.topics.map((t) => <span key={t} style={tagStyle}>{t}</span>)}
       </div>
 
@@ -513,26 +475,22 @@ function PreviewItem({ item, label, selectable = false, selected = false, onTogg
 
 /* ── Vocabulary ─────────────────────────────────────────────── */
 
-const POS_LABELS = {
-  noun: "noun", proper_noun: "name", pronoun: "pronoun", verb: "verb", i_adjective: "い-adj",
-  na_adjective: "な-adj", adverb: "adverb", prenominal: "prenominal", numeral: "numeral", expression: "expression",
-};
 
 function TermsPreview({ preview, busy, onSave }) {
   const updates = preview.meaning_updates ?? 0;
   const blocked = preview.errors.length > 0 || (preview.new_count === 0 && updates === 0) || !!busy;
   const label = [
-    preview.new_count ? `${preview.new_count} new term${preview.new_count === 1 ? "" : "s"}` : "",
-    updates ? `${updates} meaning${updates === 1 ? "" : "s"}` : "",
-  ].filter(Boolean).join(" + ") || "0 new terms";
+    preview.new_count ? ui.vocabulary.newTerms(preview.new_count) : "",
+    updates ? ui.vocabulary.meanings(updates) : "",
+  ].filter(Boolean).join(" + ") || ui.vocabulary.newTerms(0);
   return (
     <div style={{ ...cardStyle, marginTop: "16px", animation: "fadeSlideIn 0.3s ease forwards" }}>
-      <h3 style={sectionTitle}>{preview.items.some((t) => t.line) ? "Terms in the list" : "Terms in the text"}</h3>
+      <h3 style={sectionTitle}>{preview.items.some((term) => term.line) ? ui.vocabulary.inList : ui.vocabulary.inText}</h3>
       {preview.errors.map((e) => <ErrorBox key={e} message={e} />)}
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", margin: "10px 0 16px" }}>
-        <span style={countChip("ready")}>{preview.new_count} new</span>
-        <span style={countChip("duplicate")}>{preview.existing_count} already known</span>
-        {updates > 0 && <span style={countChip("ready")}>{updates} meaning{updates === 1 ? "" : "s"} to add</span>}
+        <span style={countChip("ready")}>{ui.vocabulary.counts.new(preview.new_count)}</span>
+        <span style={countChip("duplicate")}>{ui.vocabulary.counts.known(preview.existing_count)}</span>
+        {updates > 0 && <span style={countChip("ready")}>{ui.vocabulary.counts.meanings(updates)}</span>}
       </div>
       {(preview.warnings ?? []).length > 0 && (
         <ul style={{ margin: "0 0 14px 18px", fontSize: "12px", color: "var(--text-secondary)" }}>
@@ -551,7 +509,7 @@ function TermsPreview({ preview, busy, onSave }) {
         ))}
       </div>
       <button onClick={onSave} disabled={blocked} style={{ ...submitButtonStyle(blocked), marginTop: "18px" }}>
-        {busy === "saveTerms" ? <Spinner /> : `Save ${label}`}
+        {busy === "saveTerms" ? <Spinner /> : ui.vocabulary.save(label)}
       </button>
     </div>
   );
@@ -562,8 +520,8 @@ function TermHead({ term }) {
     <>
       <span style={{ fontSize: "16px", fontWeight: 600, color: "var(--text-primary)", minWidth: "84px" }}>{term.written}</span>
       <span style={{ fontSize: "12px", color: "var(--text-secondary)", minWidth: "90px" }}>{term.reading !== term.written ? term.reading : ""}</span>
-      <span style={tagStyle}>{POS_LABELS[term.pos] ?? term.pos}</span>
-      <span style={diffBadgeStyle}>{term.level >= 3 ? "level 3+" : `level ${term.level}`}</span>
+      <span style={tagStyle}>{ui.vocabulary.pos[term.pos] ?? term.pos}</span>
+      <span style={diffBadgeStyle}>{ui.vocabulary.level(term.level)}</span>
     </>
   );
 }
@@ -600,12 +558,12 @@ function Vocabulary({ track, version }) {
 
   const translate = () => act("translate", async () => {
     const r = await postJson("/api/terms/meanings", { track: track.code, limit: 60 });
-    return `${r.translated} meaning${r.translated === 1 ? "" : "s"} added by ${r.model} · ${r.input_tokens + r.output_tokens} tokens · ${(r.duration_ms / 1000).toFixed(1)} s`;
+    return ui.vocabulary.translated(r);
   });
 
   const sync = () => act("sync", async () => {
     const r = await postJson(`/api/terms/sync?track=${encodeURIComponent(track.code)}`, {});
-    return `${r.exercises_linked} exercise${r.exercises_linked === 1 ? "" : "s"} linked to their terms · ${r.terms_created} new term${r.terms_created === 1 ? "" : "s"}.`;
+    return ui.vocabulary.synced(r.exercises_linked, r.terms_created);
   });
 
   const saveMeaning = (term, meaning) => act(null, async () => {
@@ -617,34 +575,34 @@ function Vocabulary({ track, version }) {
   });
 
   const remove = (term) => {
-    if (!window.confirm(`Delete the term ${term.written} and its links to exercises?`)) return;
+    if (!window.confirm(ui.vocabulary.confirmDelete(term.written))) return;
     act(null, async () => {
       const res = await fetch(`/api/terms/${term.id}?track=${encodeURIComponent(track.code)}`, { method: "DELETE", headers: identityHeaders() });
-      if (!res.ok) throw new Error((await res.json()).detail || "Delete failed");
-      return `${term.written} deleted.`;
+      if (!res.ok) throw new Error((await res.json()).detail || ui.vocabulary.deleteFailed);
+      return ui.vocabulary.deleted(term.written);
     });
   };
 
   return (
     <div style={{ ...cardStyle, marginTop: "16px" }}>
-      <h3 style={sectionTitle}>Vocabulary of the track</h3>
+      <h3 style={sectionTitle}>{ui.vocabulary.title}</h3>
       <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "14px" }}>
-        {data ? `${data.total} term${data.total === 1 ? "" : "s"}${missingOnly || query ? " matching" : ""} · ${data.missing_meanings} without a meaning` : "Loading…"}.
-        Every new exercise is linked to its terms automatically.
+        {data ? ui.vocabulary.totals(data.total, missingOnly || !!query, data.missing_meanings) : ui.common.loading}{" "}
+        {ui.vocabulary.autoLink}
       </p>
 
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "12px" }}>
         <button onClick={translate} disabled={!!busy || !data?.missing_meanings} style={secondaryBtn}>
-          {busy === "translate" ? <Spinner /> : `Translate missing meanings with AI (${Math.min(60, data?.missing_meanings ?? 0)})`}
+          {busy === "translate" ? <Spinner /> : ui.vocabulary.translate(Math.min(60, data?.missing_meanings ?? 0))}
         </button>
-        <button onClick={sync} disabled={!!busy} style={secondaryBtn}>{busy === "sync" ? <Spinner /> : "Link existing exercises"}</button>
+        <button onClick={sync} disabled={!!busy} style={secondaryBtn}>{busy === "sync" ? <Spinner /> : ui.vocabulary.sync}</button>
       </div>
       <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center", marginBottom: "14px" }}>
-        <input value={query} onChange={(e) => { setQuery(e.target.value); setLimit(VOCABULARY_LIMIT); }} placeholder="Search (word, reading, meaning)"
+        <input value={query} onChange={(e) => { setQuery(e.target.value); setLimit(VOCABULARY_LIMIT); }} placeholder={ui.vocabulary.search}
           style={{ ...inputStyle, flex: 1, minWidth: "180px", padding: "7px 11px", fontSize: "13px" }} />
         <label style={{ fontSize: "12px", color: "var(--text-secondary)", display: "flex", gap: "6px", alignItems: "center" }}>
           <input type="checkbox" checked={missingOnly} onChange={(e) => { setMissingOnly(e.target.checked); setLimit(VOCABULARY_LIMIT); }} style={{ accentColor: "var(--accent)" }} />
-          without a meaning
+          {ui.vocabulary.missingOnly}
         </label>
       </div>
 
@@ -656,14 +614,14 @@ function Vocabulary({ track, version }) {
           <div key={term.id} style={termRow}>
             <TermHead term={term} />
             <MeaningInput term={term} onSave={saveMeaning} />
-            <span title="Exercises using this term" style={{ fontSize: "11px", color: "var(--text-muted)" }}>{term.exercise_count} ex.</span>
-            <button onClick={() => remove(term)} title="Delete this term" style={{ ...linkBtn, color: "var(--error)" }}>✕</button>
+            <span title={ui.vocabulary.exercisesTitle} style={{ fontSize: "11px", color: "var(--text-muted)" }}>{ui.vocabulary.exerciseCount(term.exercise_count)}</span>
+            <button onClick={() => remove(term)} title={ui.vocabulary.deleteTitle} style={{ ...linkBtn, color: "var(--error)" }}>✕</button>
           </div>
         ))}
       </div>
       {data && data.items.length < data.total && (
         <button onClick={() => setLimit((n) => n + VOCABULARY_LIMIT)} style={{ ...secondaryBtn, width: "100%", marginTop: "12px" }}>
-          Show more ({data.total - data.items.length} remaining)
+          {ui.common.loadMore(data.total - data.items.length)}
         </button>
       )}
     </div>
@@ -679,10 +637,10 @@ function MeaningInput({ term, onSave }) {
       <input
         value={value} onChange={(e) => setValue(e.target.value)} onBlur={commit}
         onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-        placeholder="meaning" title={term.example ?? ""}
+        placeholder={ui.vocabulary.meaningPlaceholder} title={term.example ?? ""}
         style={{ ...inputStyle, padding: "5px 9px", fontSize: "13px" }}
       />
-      {term.meaning_source && <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{term.meaning_source === "ai" ? "AI" : "you"}</span>}
+      {term.meaning_source && <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>{ui.vocabulary.source[term.meaning_source]}</span>}
     </span>
   );
 }
@@ -690,7 +648,6 @@ function MeaningInput({ term, onSave }) {
 /* ── Job history ────────────────────────────────────────────── */
 
 const JOB_STATUS = { saved: "ready", draft: "history", discarded: "duplicate" };
-const JOB_KINDS = { import: "import", generate: "AI", terms: "vocabulary" };
 
 function JobHistory({ track, version, onLoadSource, onOpenDraft }) {
   const [jobs, setJobs] = useState(null);
@@ -725,31 +682,31 @@ function JobHistory({ track, version, onLoadSource, onOpenDraft }) {
 
   return (
     <div style={{ ...cardStyle, marginTop: "16px" }}>
-      <h3 style={sectionTitle}>Past imports and generations</h3>
+      <h3 style={sectionTitle}>{ui.jobs.title}</h3>
       <p style={{ fontSize: "13px", color: "var(--text-secondary)", marginBottom: "14px" }}>
-        Every job keeps its source file, so each exercise can be traced back to it.
+        {ui.jobs.subtitle}
       </p>
       {error && <ErrorBox message={error} />}
-      {jobs?.length === 0 && <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>Nothing yet on this track.</p>}
+      {jobs?.length === 0 && <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>{ui.jobs.empty}</p>}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
         {jobs?.map((job) => (
           <div key={job.id} style={itemCard("history")}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <span style={tagStyle}>{JOB_KINDS[job.kind]}</span>
+              <span style={tagStyle}>{ui.jobs.kinds[job.kind] ?? job.kind}</span>
               <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text-primary)" }}>{job.source_name}</span>
-              <span style={countChip(JOB_STATUS[job.status])}>{job.status === "saved" ? `+${job.created_count}` : job.status}</span>
-              {job.kind === "generate" && <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{job.input_tokens + job.output_tokens} tok</span>}
+              <span style={countChip(JOB_STATUS[job.status])}>{job.status === "saved" ? `+${job.created_count}` : ui.jobs.status[job.status] ?? job.status}</span>
+              {job.kind === "generate" && <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>{ui.runs.tokens(job.input_tokens + job.output_tokens)}</span>}
               <span style={{ marginLeft: "auto", fontSize: "11px", color: "var(--text-muted)" }}>
                 {new Date(job.created_at).toLocaleString()}{job.user_display_name ? ` · ${job.user_display_name}` : ""}
               </span>
             </div>
             <div style={{ display: "flex", gap: "14px", marginTop: "8px" }}>
-              <button onClick={() => toggleSource(job)} style={linkBtn}>{openJob?.id === job.id ? "Hide source" : "Show source"}</button>
+              <button onClick={() => toggleSource(job)} style={linkBtn}>{openJob?.id === job.id ? ui.jobs.hideSource : ui.jobs.showSource}</button>
               {openJob?.id === job.id && (
-                <button onClick={() => onLoadSource(openJob.source_text, openJob.source_name, openJob.kind)} style={linkBtn}>Load into the editor</button>
+                <button onClick={() => onLoadSource(openJob.source_text, openJob.source_name, openJob.kind)} style={linkBtn}>{ui.jobs.load}</button>
               )}
-              {job.status === "draft" && <button onClick={() => openDraft(job)} style={linkBtn}>Open draft</button>}
+              {job.status === "draft" && <button onClick={() => openDraft(job)} style={linkBtn}>{ui.jobs.openDraft}</button>}
             </div>
             {openJob?.id === job.id && <pre style={{ ...preStyle, marginTop: "8px", maxHeight: "320px", overflow: "auto" }}>{openJob.source_text}</pre>}
           </div>

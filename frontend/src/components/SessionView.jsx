@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ExerciseCard } from "./ExerciseCard";
+import { ui } from "../i18n";
 
 // Furigana are shown by default up to this difficulty (1–4 = up to JLPT N4,
 // beginner levels, D-04); the learner's toggle then applies to the rest of the session.
@@ -32,8 +33,8 @@ export function SessionView({ exercises, onComplete }) {
       {/* Progress bar */}
       <div style={progressWrap}>
         <div style={progressHeader}>
-          <span style={progressLabel}>Exercise {index + 1} of {exercises.length}</span>
-          <span style={progressLabel}>{Math.round(progressPct)}% complete</span>
+          <span style={progressLabel}>{ui.session.progress(index + 1, exercises.length)}</span>
+          <span style={progressLabel}>{ui.session.complete(Math.round(progressPct))}</span>
         </div>
         <div style={progressTrack}>
           <div style={{ ...progressFill, width: `${progressPct}%` }} />

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useChatSession } from "../hooks/useChatSession";
 import { SessionView } from "./SessionView";
 import { SessionSummary } from "./SessionSummary";
+import { ui } from "../i18n";
 
 /** Strips markdown formatting from the assistant's text. */
 function stripMarkdown(text) {
@@ -110,10 +111,9 @@ export function ChatWindow({ track }) {
       <div style={messagesAreaStyle}>
         {messages.length === 0 && (
           <div style={emptyStateStyle}>
-            <p style={emptyTitleStyle}>Hi! I'm your language assistant.</p>
+            <p style={emptyTitleStyle}>{ui.chat.greeting}</p>
             <p style={emptySubStyle}>
-              You are practicing {track.name}. Tell me your level and maybe a specific topic,
-              and I will prepare a tailored exercise session for you.
+              {ui.chat.intro(track.name)}
             </p>
           </div>
         )}
@@ -146,11 +146,10 @@ export function ChatWindow({ track }) {
         {phase === "ready" && exercises.length > 0 && (
           <div style={readyBannerStyle}>
             <p style={readyTextStyle}>
-              Found <strong>{exercises.length}</strong>{" "}
-              {exercises.length === 1 ? "exercise" : "exercises"} for you!
+              {ui.chat.found.before}<strong>{exercises.length}</strong>{ui.chat.found.after(exercises.length)}
             </p>
             <button onClick={startExercises} style={startBtnStyle}>
-              Start exercises →
+              {ui.chat.startExercises}
             </button>
           </div>
         )}
@@ -172,9 +171,9 @@ export function ChatWindow({ track }) {
             onClick={handleNewChat}
             disabled={inputDisabled}
             style={newChatBtnStyle(!inputDisabled)}
-            title="Start over: the current conversation is cleared"
+            title={ui.chat.newChatTitle}
           >
-            + New chat
+            {ui.chat.newChat}
           </button>
         </div>
       )}
@@ -189,14 +188,14 @@ export function ChatWindow({ track }) {
           disabled={inputDisabled}
           placeholder={
             phase === "searching"
-              ? "Looking for exercises…"
+              ? ui.chat.placeholders.searching
               : phase === "reviewing"
-              ? "Analyzing your results…"
+              ? ui.chat.placeholders.reviewing
               : phase === "ready"
-              ? "Start the exercises or keep chatting"
+              ? ui.chat.placeholders.ready
               : summaries.length > 0
-              ? "Ask about a mistake (e.g. \"why is #3 wrong?\") or ask for more exercises"
-              : "Type a message…"
+              ? ui.chat.placeholders.afterSession
+              : ui.chat.placeholders.default
           }
           rows={2}
           style={{
@@ -222,7 +221,7 @@ export function ChatWindow({ track }) {
         </button>
       </div>
 
-      <p style={hintStyle}>Enter to send · Shift+Enter for a new line</p>
+      <p style={hintStyle}>{ui.chat.hint}</p>
 
       <style>{animStyles}</style>
     </div>

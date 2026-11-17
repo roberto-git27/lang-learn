@@ -1,5 +1,6 @@
 import { exerciseTypeLabel, PROMPT_FIELD } from "../utils/exerciseTypes";
 import { RubyText } from "./RubyText";
+import { ui } from "../i18n";
 
 /**
  * End-of-session summary: score, per-type breakdown and the numbered list of
@@ -12,9 +13,9 @@ export function SessionSummary({ results, onRestart }) {
   const score = total > 0 ? Math.round((correctCount / total) * 100) : 0;
 
   const scoreLabel =
-    score >= 90 ? "Excellent!" :
-    score >= 70 ? "Great!" :
-    score >= 50 ? "Good" : "Keep practicing";
+    score >= 90 ? ui.summary.excellent :
+    score >= 70 ? ui.summary.great :
+    score >= 50 ? ui.summary.good : ui.summary.keepPracticing;
 
   const scoreColor =
     score >= 70 ? "var(--success)" :
@@ -60,11 +61,11 @@ export function SessionSummary({ results, onRestart }) {
               {scoreLabel}
             </p>
             <p style={{ fontSize: "15px", color: "var(--text-secondary)" }}>
-              {correctCount} of {total} {total === 1 ? "exercise correct" : "exercises correct"}
+              {ui.summary.correctOf(correctCount, total)}
             </p>
             {avgSim !== null && (
               <p style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "6px", fontFamily: "var(--font-mono)" }}>
-                average similarity (translations): {Math.round(avgSim * 100)}%
+                {ui.summary.averageSimilarity(Math.round(avgSim * 100))}
               </p>
             )}
           </div>
@@ -74,7 +75,7 @@ export function SessionSummary({ results, onRestart }) {
       {/* Per-type breakdown — only shown when more than one type */}
       {Object.keys(byType).length > 1 && (
         <div style={card}>
-          <p style={sectionLabel}>By exercise type</p>
+          <p style={sectionLabel}>{ui.summary.byType}</p>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             {Object.entries(byType).map(([type, { correct: c, total: t }]) => {
               const pct = Math.round((c / t) * 100);
@@ -100,7 +101,7 @@ export function SessionSummary({ results, onRestart }) {
       {/* Wrong answers review */}
       {wrong.length > 0 && (
         <div style={card}>
-          <p style={sectionLabel}>Mistakes to review — {wrong.length}</p>
+          <p style={sectionLabel}>{ui.summary.mistakes(wrong.length)}</p>
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             {wrong.map(({ exercise, result, number }) => {
               const promptField = PROMPT_FIELD[exercise.exercise_type];
@@ -115,11 +116,11 @@ export function SessionSummary({ results, onRestart }) {
                   )}
                   {result.user_answer && (
                     <p style={wrongAnswer(false)}>
-                      <span style={answerLabel}>Your answer</span> {result.user_answer}
+                      <span style={answerLabel}>{ui.summary.yourAnswer}</span> {result.user_answer}
                     </p>
                   )}
                   <p style={wrongAnswer(true)}>
-                    <span style={answerLabel}>Correct answer</span> {result.correct_answer}
+                    <span style={answerLabel}>{ui.summary.correctAnswer}</span> {result.correct_answer}
                   </p>
                   {result.explanation && (
                     <p style={explanationStyle}>
@@ -128,7 +129,7 @@ export function SessionSummary({ results, onRestart }) {
                   )}
                   {result.similarity_score !== undefined && (
                     <p style={{ fontSize: "11px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", marginTop: "4px" }}>
-                      similarity: {Math.round(result.similarity_score * 100)}%
+                      {ui.exercise.similarity(Math.round(result.similarity_score * 100))}
                     </p>
                   )}
                 </div>
@@ -141,7 +142,7 @@ export function SessionSummary({ results, onRestart }) {
       {/* Action */}
       {onRestart && (
         <button onClick={onRestart} style={restartBtn}>
-          New session →
+          {ui.summary.newSession}
         </button>
       )}
 

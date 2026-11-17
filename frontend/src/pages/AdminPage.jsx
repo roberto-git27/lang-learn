@@ -3,12 +3,13 @@ import { AgentRunsPanel } from "./admin/AgentRunsPanel";
 import { CoveragePanel } from "./admin/CoveragePanel";
 import { ReadingsPanel } from "./admin/ReadingsPanel";
 import { ReviewPanel } from "./admin/ReviewPanel";
+import { ui } from "../i18n";
 
 const TABS = [
-  { id: "review",      label: "Review",     icon: "🔍" },
-  { id: "coverage",    label: "Coverage",   icon: "🧮" },
-  { id: "readings",    label: "Readings",   icon: "ふ" },
-  { id: "agent-runs",  label: "Agent Runs", icon: "📊" },
+  { id: "review",      label: ui.admin.tabs.review,    icon: "🔍" },
+  { id: "coverage",    label: ui.admin.tabs.coverage,  icon: "🧮" },
+  { id: "readings",    label: ui.admin.tabs.readings,  icon: "ふ" },
+  { id: "agent-runs",  label: ui.admin.tabs.agentRuns, icon: "📊" },
 ];
 
 export function AdminPage({ track }) {
@@ -18,8 +19,8 @@ export function AdminPage({ track }) {
     <div style={wrapStyle}>
       {/* Page header */}
       <div style={headerBlock}>
-        <h1 style={pageTitle}>Admin</h1>
-        <p style={pageSubtitle}>Review generated exercises, see how many exercises each level has, fix wrong furigana readings and inspect every run of the exercise agent. New exercises are written in the Studio.</p>
+        <h1 style={pageTitle}>{ui.admin.title}</h1>
+        <p style={pageSubtitle}>{ui.admin.subtitle}</p>
       </div>
 
       {/* Tab bar */}

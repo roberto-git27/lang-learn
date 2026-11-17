@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ui } from "../i18n";
 
 /**
  * ProfileGate — pick or create a profile before using the app.
@@ -15,7 +16,7 @@ export function ProfileGate({ tracks, onSelect }) {
   useEffect(() => {
     fetch("/api/users")
       .then((res) => res.json().then((data) => {
-        if (!res.ok) throw new Error(data.detail || "Failed to load profiles");
+        if (!res.ok) throw new Error(data.detail || ui.profiles.loadFailed);
         setProfiles(data);
         if (data.length === 0) setCreating(true);
       }))
@@ -30,8 +31,8 @@ export function ProfileGate({ tracks, onSelect }) {
 
   return (
     <div style={wrapStyle}>
-      <h1 style={titleStyle}>Who is studying?</h1>
-      <p style={subtitleStyle}>Profiles keep separate history and tracks. They are not accounts: anyone using this instance can pick one.</p>
+      <h1 style={titleStyle}>{ui.profiles.title}</h1>
+      <p style={subtitleStyle}>{ui.profiles.subtitle}</p>
 
       {error && <p style={errorStyle}>⚠ {error}</p>}
 
@@ -47,18 +48,18 @@ export function ProfileGate({ tracks, onSelect }) {
       ) : (
         <>
           <div style={gridStyle}>
-            {profiles === null && <p style={subtitleStyle}>Loading…</p>}
+            {profiles === null && <p style={subtitleStyle}>{ui.common.loading}</p>}
             {profiles?.map((p) => (
               <button key={p.id} onClick={() => choose(p)} style={profileCard}>
                 <span style={avatarStyle}>{p.display_name.slice(0, 1).toUpperCase()}</span>
                 <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{p.display_name}</span>
                 <span style={{ fontSize: "11px", color: "var(--text-muted)" }}>
-                  {p.tracks.join(" · ") || "no tracks"}{p.has_pin ? " · 🔒" : ""}
+                  {p.tracks.join(" · ") || ui.profiles.noTracks}{p.has_pin ? " · 🔒" : ""}
                 </span>
               </button>
             ))}
           </div>
-          <button onClick={() => setCreating(true)} style={secondaryBtn}>+ New profile</button>
+          <button onClick={() => setCreating(true)} style={secondaryBtn}>{ui.profiles.newProfile}</button>
         </>
       )}
     </div>
@@ -81,7 +82,7 @@ function PinForm({ profile, onCancel, onVerified }) {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(res.status === 403 ? "Wrong PIN" : data.detail || "PIN check failed");
+        throw new Error(res.status === 403 ? ui.profiles.wrongPin : data.detail || ui.profiles.pinCheckFailed);
       }
       onVerified();
     } catch (err) {
@@ -94,7 +95,7 @@ function PinForm({ profile, onCancel, onVerified }) {
 
   return (
     <form onSubmit={submit} style={formStyle}>
-      <p style={{ color: "var(--text-secondary)" }}>PIN for <strong>{profile.display_name}</strong></p>
+      <p style={{ color: "var(--text-secondary)" }}>{ui.profiles.pinFor} <strong>{profile.display_name}</strong></p>
       <input
         autoFocus type="password" inputMode="numeric" maxLength={4} value={pin}
         onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
@@ -102,8 +103,8 @@ function PinForm({ profile, onCancel, onVerified }) {
       />
       {error && <p style={errorStyle}>⚠ {error}</p>}
       <div style={{ display: "flex", gap: "10px" }}>
-        <button type="button" onClick={onCancel} style={secondaryBtn}>Back</button>
-        <button type="submit" disabled={pin.length !== 4 || loading} style={primaryBtn(pin.length === 4 && !loading)}>Enter</button>
+        <button type="button" onClick={onCancel} style={secondaryBtn}>{ui.common.back}</button>
+        <button type="submit" disabled={pin.length !== 4 || loading} style={primaryBtn(pin.length === 4 && !loading)}>{ui.profiles.enter}</button>
       </div>
     </form>
   );
@@ -132,7 +133,7 @@ function CreateProfileForm({ tracks, canCancel, onCancel, onCreated }) {
         body: JSON.stringify({ display_name: name.trim(), pin: pin || null, tracks: selectedTracks }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail?.[0]?.msg || data.detail || "Could not create the profile");
+      if (!res.ok) throw new Error(data.detail?.[0]?.msg || data.detail || ui.profiles.createFailed);
       onCreated(data);
     } catch (err) {
       setError(err.message);
@@ -143,16 +144,16 @@ function CreateProfileForm({ tracks, canCancel, onCancel, onCreated }) {
 
   return (
     <form onSubmit={submit} style={formStyle}>
-      <label style={labelStyle}>Name</label>
+      <label style={labelStyle}>{ui.profiles.name}</label>
       <input autoFocus value={name} maxLength={64} onChange={(e) => setName(e.target.value)} style={inputStyle} />
 
-      <label style={labelStyle}>PIN (optional, 4 digits)</label>
+      <label style={labelStyle}>{ui.profiles.pin}</label>
       <input
         type="password" inputMode="numeric" maxLength={4} value={pin}
         onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} style={inputStyle}
       />
 
-      <label style={labelStyle}>Tracks</label>
+      <label style={labelStyle}>{ui.profiles.tracks}</label>
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
         {tracks.map((t) => (
           <button key={t.code} type="button" onClick={() => toggleTrack(t.code)} style={chip(selectedTracks.includes(t.code))}>
@@ -163,8 +164,8 @@ function CreateProfileForm({ tracks, canCancel, onCancel, onCreated }) {
 
       {error && <p style={errorStyle}>⚠ {error}</p>}
       <div style={{ display: "flex", gap: "10px" }}>
-        {canCancel && <button type="button" onClick={onCancel} style={secondaryBtn}>Back</button>}
-        <button type="submit" disabled={!valid || loading} style={primaryBtn(valid && !loading)}>Create profile</button>
+        {canCancel && <button type="button" onClick={onCancel} style={secondaryBtn}>{ui.common.back}</button>}
+        <button type="submit" disabled={!valid || loading} style={primaryBtn(valid && !loading)}>{ui.profiles.create}</button>
       </div>
     </form>
   );

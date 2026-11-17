@@ -5,20 +5,10 @@ import { RubyText } from "./RubyText";
 import { normalize, similarityRatio } from "../utils/similarity";
 import { isAcceptedRomaji } from "../utils/romaji";
 import { PROMPT_FIELD, TRANSLATION_BEFORE_ANSWER } from "../utils/exerciseTypes";
-
-// Names of the seeded tracks' languages, used in instructions like "Translate into Italian".
-const LANG_NAMES = { it: "Italian", ja: "Japanese" };
+import { ui } from "../i18n";
 
 // Answered by picking one of payload.options (the rest are typed).
 const OPTION_TYPES = new Set(["multiple_choice", "fill_blank", "kanji_reading", "kanji_writing"]);
-
-const INSTRUCTIONS = {
-  multiple_choice: "Choose the correct answer",
-  fill_blank: "Fill in the blank",
-  kanji_reading: "How is the underlined word read?",
-  kanji_writing: "Choose the kanji for the underlined word",
-  romaji_input: "Write the underlined word in romaji",
-};
 
 function shuffledIndices(n) {
   const order = Array.from({ length: n }, (_, i) => i);
@@ -109,8 +99,8 @@ export function ExerciseCard({ exercise, onNext, onResult, isLast, showFurigana,
 
   const tags = exercise.topics ?? [];
   const hasFurigana = Object.values(annotations).flat(2).some((seg) => seg?.reading);
-  const sourceLangName = LANG_NAMES[exercise.source_language] ?? exercise.source_language;
-  const sourceLabel = INSTRUCTIONS[exType] ?? `Translate into ${sourceLangName}`;
+  const sourceLangName = ui.exercise.languageNames[exercise.source_language] ?? exercise.source_language;
+  const sourceLabel = ui.exercise.instructions[exType] ?? ui.exercise.translateInto(sourceLangName);
 
   // The phrase in the base language: on request before answering (where it
   // doesn't give the answer away), always after.
@@ -150,7 +140,7 @@ export function ExerciseCard({ exercise, onNext, onResult, isLast, showFurigana,
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
           {hasFurigana && (
-            <button onClick={onToggleFurigana} title="Show/hide the readings above kanji" style={furiganaToggleStyle(showFurigana)}>
+            <button onClick={onToggleFurigana} title={ui.exercise.furiganaToggle} style={furiganaToggleStyle(showFurigana)}>
               ふりがな
             </button>
           )}
@@ -176,7 +166,7 @@ export function ExerciseCard({ exercise, onNext, onResult, isLast, showFurigana,
         {translationAllowed && (
           showTranslation || result
             ? <p style={translationStyle}>{translation}</p>
-            : <button onClick={() => setShowTranslation(true)} style={translationButtonStyle}>Show translation</button>
+            : <button onClick={() => setShowTranslation(true)} style={translationButtonStyle}>{ui.exercise.showTranslation}</button>
         )}
       </div>
 
@@ -263,14 +253,14 @@ export function ExerciseCard({ exercise, onNext, onResult, isLast, showFurigana,
       {/* Typed answer, always in Latin script: translation (base language) or romaji */}
       {!hasOptions && (
         <div style={{ marginBottom: "20px", position: "relative" }}>
-          <span style={labelStyle}>Your answer</span>
+          <span style={labelStyle}>{ui.exercise.yourAnswer}</span>
           <textarea
             ref={inputRef}
             value={answer}
             onChange={(e) => setAnswer(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={!!result}
-            placeholder={exType === "romaji_input" ? "Type in romaji…" : "Type the translation…"}
+            placeholder={exType === "romaji_input" ? ui.exercise.typeRomaji : ui.exercise.typeTranslation}
             rows={3}
             style={{
               ...inputStyle,
@@ -304,12 +294,12 @@ export function ExerciseCard({ exercise, onNext, onResult, isLast, showFurigana,
                 color: result.correct ? "var(--success)" : "var(--error)",
                 marginBottom: "6px",
               }}>
-                {result.correct ? "Correct!" : "Not quite"}
+                {result.correct ? ui.exercise.correct : ui.exercise.wrong}
               </p>
               {!result.correct && !hasOptions && (
                 <>
                   <p style={{ fontSize: "12px", color: "var(--text-secondary)", marginBottom: "4px" }}>
-                    Correct answer:
+                    {ui.exercise.correctAnswer}
                   </p>
                   <p style={{
                     fontFamily: "var(--font-mono)",
@@ -336,7 +326,7 @@ export function ExerciseCard({ exercise, onNext, onResult, isLast, showFurigana,
                   color: "var(--text-muted)",
                   fontFamily: "var(--font-mono)",
                 }}>
-                  similarity: {(result.similarity_score * 100).toFixed(0)}%
+                  {ui.exercise.similarity((result.similarity_score * 100).toFixed(0))}
                 </p>
               )}
             </div>
@@ -352,17 +342,17 @@ export function ExerciseCard({ exercise, onNext, onResult, isLast, showFurigana,
             disabled={!canSubmit}
             style={primaryButtonStyle(canSubmit)}
           >
-            Check
+            {ui.exercise.check}
           </button>
         ) : (
           <button onClick={onNext} style={nextButtonStyle}>
-            {isLast ? "Finish session →" : "Next exercise →"}
+            {isLast ? ui.exercise.finish : ui.exercise.next}
           </button>
         )}
       </div>
 
       <p style={{ marginTop: "16px", fontSize: "11px", color: "var(--text-muted)" }}>
-        {result ? "Press Enter to continue" : "Press Enter to confirm"}
+        {result ? ui.exercise.enterToContinue : ui.exercise.enterToConfirm}
       </p>
 
       <style>{animations}</style>

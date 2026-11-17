@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { ui } from "../i18n";
 
 const API_BASE = "/api/exercises";
 
@@ -19,7 +20,7 @@ export function useSession(track) {
     try {
       const res = await fetch(`${API_BASE}/random?${params.toString()}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to load exercises");
+      if (!res.ok) throw new Error(data.detail || ui.practice.loadFailed);
       return data;
     } catch (err) {
       setError(err.message);

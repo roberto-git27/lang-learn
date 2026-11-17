@@ -1,16 +1,7 @@
 import { useEffect, useState } from "react";
 import { ErrorBox, Spinner } from "./_shared";
 import { exerciseTypeLabel } from "../../utils/exerciseTypes";
-
-// Short column headers (the full label is the tooltip).
-const SHORT_LABELS = {
-  multiple_choice: "MC",
-  fill_blank: "Blank",
-  kanji_reading: "Read",
-  kanji_writing: "Write",
-  romaji_input: "Romaji",
-  translate_rev: "Transl.",
-};
+import { ui } from "../../i18n";
 
 // Below this many exercises a level is shown as thin: a chat session (10
 // exercises, part of them one level up) would mostly be generated.
@@ -31,7 +22,7 @@ export function CoveragePanel({ track }) {
     try {
       const res = await fetch(`/api/exercises/stats?track=${encodeURIComponent(track.code)}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to load the exercise counts");
+      if (!res.ok) throw new Error(data.detail || ui.coverage.loadFailed);
       setStats(data);
     } catch (err) {
       setError(err.message);
@@ -46,13 +37,13 @@ export function CoveragePanel({ track }) {
     <div style={cardStyle}>
       <div style={headerRow}>
         <div>
-          <h3 style={titleStyle}>Coverage</h3>
+          <h3 style={titleStyle}>{ui.coverage.title}</h3>
           <p style={subtitleStyle}>
-            Exercises per difficulty and type. Sessions use these first and generate only what is missing.
+            {ui.coverage.subtitle}
           </p>
         </div>
         <button onClick={load} disabled={loading} style={refreshBtn}>
-          {loading ? <Spinner /> : "↻ Refresh"}
+          {loading ? <Spinner /> : ui.common.refresh}
         </button>
       </div>
 
@@ -61,23 +52,23 @@ export function CoveragePanel({ track }) {
       {stats && (
         <>
           <div style={totalsRow}>
-            <span><strong>{stats.total}</strong> exercises</span>
+            <span><strong>{stats.total}</strong> {ui.coverage.exercises}</span>
             <span style={{ color: "var(--text-muted)" }}>·</span>
-            <span><strong>{stats.human_checked}</strong> verified</span>
+            <span><strong>{stats.human_checked}</strong> {ui.coverage.verified}</span>
             <span style={{ color: "var(--text-muted)" }}>·</span>
-            <span><strong>{stats.total - stats.human_checked}</strong> to review</span>
+            <span><strong>{stats.total - stats.human_checked}</strong> {ui.coverage.toReview}</span>
           </div>
 
           <div style={tableWrap}>
             <table style={tableStyle}>
               <thead>
                 <tr>
-                  <th style={th("left")}>Level</th>
-                  <th style={th()}>Total</th>
-                  <th style={th()} title="Verified by a human">Verified</th>
+                  <th style={th("left")}>{ui.coverage.level}</th>
+                  <th style={th()}>{ui.coverage.total}</th>
+                  <th style={th()} title={ui.coverage.verifiedTitle}>{ui.coverage.verifiedColumn}</th>
                   {stats.exercise_types.map((code) => (
                     <th key={code} style={th()} title={exerciseTypeLabel(code)}>
-                      {SHORT_LABELS[code] ?? code}
+                      {ui.coverage.shortTypes[code] ?? code}
                     </th>
                   ))}
                 </tr>
@@ -100,8 +91,7 @@ export function CoveragePanel({ track }) {
           </div>
 
           <p style={noteStyle}>
-            Levels with fewer than {THIN_LEVEL} exercises are highlighted: a session there will mostly be generated.
-            Add exercises from the Studio (import or generate).
+            {ui.coverage.note(THIN_LEVEL)}
           </p>
         </>
       )}

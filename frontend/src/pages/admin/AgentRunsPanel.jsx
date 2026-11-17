@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ErrorBox, Spinner, btnHover, labelStyle, tagStyle } from "./_shared";
+import { ui } from "../../i18n";
 
 const STATUS_COLORS = {
   ok: { bg: "rgba(16,185,129,0.1)", border: "rgba(16,185,129,0.3)", color: "var(--success)" },
@@ -20,7 +21,7 @@ export function AgentRunsPanel({ track }) {
     try {
       const res = await fetch(`/api/exercises/agent-runs?limit=50&track=${encodeURIComponent(track.code)}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to load agent runs");
+      if (!res.ok) throw new Error(data.detail || ui.runs.loadFailed);
       setRuns(data);
     } catch (err) {
       setError(err.message);
@@ -37,7 +38,7 @@ export function AgentRunsPanel({ track }) {
     try {
       const res = await fetch(`/api/exercises/agent-runs/${run.id}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Failed to load run details");
+      if (!res.ok) throw new Error(data.detail || ui.runs.detailFailed);
       setDetail(data);
     } catch (err) {
       setDetail({ error: err.message });
@@ -51,13 +52,13 @@ export function AgentRunsPanel({ track }) {
       <div style={cardStyle}>
         <div style={headerRow}>
           <div>
-            <SectionTitle>Agent Runs</SectionTitle>
+            <SectionTitle>{ui.runs.title}</SectionTitle>
             <p style={subtitleStyle}>
-              Every run of the exercise selection/generation agent: computed mix, gap, LLM cycles/tokens and outcome.
+              {ui.runs.subtitle}
             </p>
           </div>
           <button onClick={loadRuns} disabled={loading} style={refreshBtn}>
-            {loading ? <Spinner /> : "↻ Refresh"}
+            {loading ? <Spinner /> : ui.common.refresh}
           </button>
         </div>
 
@@ -65,7 +66,7 @@ export function AgentRunsPanel({ track }) {
 
         {runs && runs.length === 0 && !loading && (
           <p style={{ fontSize: "13px", color: "var(--text-muted)", marginTop: "12px" }}>
-            No runs recorded yet.
+            {ui.runs.empty}
           </p>
         )}
 
@@ -105,13 +106,13 @@ function RunRow({ run, expanded, onToggle, detail, detailLoading }) {
           {run.session_id ? run.session_id.slice(0, 8) : "—"}
         </span>
         <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>{run.user_display_name || "—"}</span>
-        <span style={tagStyle}>db {run.db_found_count}</span>
-        <span style={tagStyle}>gap {run.gap_count}</span>
-        <span style={run.generated_count > 0 ? createdBadge : tagStyle}>created {run.generated_count}</span>
-        <span style={tagStyle}>{run.cycles} cycles</span>
-        <span style={tagStyle}>{run.llm_calls} calls</span>
-        <span style={tagStyle}>{run.input_tokens + run.output_tokens} tok</span>
-        <span style={tagStyle}>{run.duration_ms} ms</span>
+        <span style={tagStyle}>{ui.runs.db(run.db_found_count)}</span>
+        <span style={tagStyle}>{ui.runs.gap(run.gap_count)}</span>
+        <span style={run.generated_count > 0 ? createdBadge : tagStyle}>{ui.runs.created(run.generated_count)}</span>
+        <span style={tagStyle}>{ui.runs.cycles(run.cycles)}</span>
+        <span style={tagStyle}>{ui.runs.calls(run.llm_calls)}</span>
+        <span style={tagStyle}>{ui.runs.tokens(run.input_tokens + run.output_tokens)}</span>
+        <span style={tagStyle}>{ui.runs.ms(run.duration_ms)}</span>
         <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>{expanded ? "▲" : "▼"}</span>
       </button>
 
@@ -121,10 +122,10 @@ function RunRow({ run, expanded, onToggle, detail, detailLoading }) {
           {detail?.error && <ErrorBox message={detail.error} />}
           {detail && !detail.error && (
             <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              <DetailField label="Request params" value={detail.request_params} />
-              <DetailField label="Target composition" value={detail.target_composition} />
-              <DetailField label="Final exercise ids" value={detail.final_exercise_ids} />
-              <DetailField label="Full trace" value={detail.trace} />
+              <DetailField label={ui.runs.requestParams} value={detail.request_params} />
+              <DetailField label={ui.runs.composition} value={detail.target_composition} />
+              <DetailField label={ui.runs.finalIds} value={detail.final_exercise_ids} />
+              <DetailField label={ui.runs.trace} value={detail.trace} />
             </div>
           )}
         </div>
