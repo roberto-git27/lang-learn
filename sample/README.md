@@ -136,7 +136,7 @@ Free text for the AI: what you want, in your own words (any language).
 - Anything after the term on its line is a note for the AI (a meaning, the readings to practise…).
 - At most 30 exercises per request.
 - **Examples:** up to `examples` human-checked exercises per type are picked at random — same difficulty first, then the closest levels — and shown to the AI as models of structure and tone.
-- **Checks:** every exercise must be valid for its type, use only the kanji of its level (levels 1–2) and really use its term. What fails is sent back once with the reason; what still fails appears in the draft as an error.
+- **Checks:** every exercise must be valid for its type, use only the kanji of its level (levels 1–2), really use its term, and be about its own sentence (the sentence or its translation must appear in the question, the sentence or the correct answer). What fails is sent back once with the reason; what still fails appears in the draft as an error.
 - **One item again:** *Write this one again with AI* on a draft item asks for a new exercise from the same spec, with a different sentence and an optional note ("a more natural sentence"); the rest of the draft is kept.
 
 ## Vocabulary texts (`mode: terms`)

@@ -45,6 +45,7 @@ knowing anything about that table.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -52,7 +53,7 @@ from sqlalchemy import func as sqlfunc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import claude_service, term_service
-from .exercise_payloads import MAX_DIFFICULTY
+from .exercise_payloads import BLANK, MAX_DIFFICULTY
 from .exercise_service import (
     EXERCISE_LOAD_OPTIONS,
     exercise_to_response,
@@ -229,7 +230,39 @@ def check_generated_item(
     missing = language_codes - {tr.language for tr in item.phrase_translations}
     if missing:
         return None, f"phrase missing languages: {sorted(missing)}"
+    if not phrase_in_payload(payload, [tr.content for tr in item.phrase_translations]):
+        return None, (
+            "the phrase does not match the exercise: its sentence (or translation) must appear in the question, "
+            "the sentence or the correct answer"
+        )
     return payload, None
+
+
+_IGNORED_IN_MATCH = re.compile(r"[\s\u3000。．.、,，!！?？「」『』«»\"'“”‘’()（）:：]")
+
+
+def _match_form(text: str) -> str:
+    return _IGNORED_IN_MATCH.sub("", text or "")
+
+
+def phrase_in_payload(payload: dict, phrase_texts: list[str]) -> bool:
+    """
+    True when one of the phrase's texts (the sentence or its translation)
+    appears in what the exercise shows or expects: question, sentence,
+    prompt, the correct answer, or a blank filled with it. Catches a stored
+    phrase unrelated to its exercise (a multiple_choice about another
+    sentence); spaces and punctuation are ignored.
+    """
+    options = payload.get("options") or []
+    index = payload.get("correct_index")
+    correct = payload.get("correct") or (options[index] if isinstance(index, int) and 0 <= index < len(options) else "")
+    shown = [payload.get(key) or "" for key in ("question", "sentence", "prompt", "sentence_with_blank", "expected")]
+    candidates = shown + [BLANK.sub(correct, text) for text in shown if correct] + [correct]
+    candidates = [_match_form(text) for text in candidates if text]
+    return any(
+        form and any(form in candidate for candidate in candidates)
+        for form in (_match_form(text) for text in phrase_texts)
+    )
 
 
 # ---------------------------------------------------------------------------

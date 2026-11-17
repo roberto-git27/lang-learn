@@ -4,10 +4,13 @@ Unit tests for the pure (no DB, no network) functions in
 the exercise selection/generation agent (Phase 1). See that module's
 docstring for the full pipeline these functions are pieces of.
 """
+import pytest
+
 from app.exercise_agent import (
     BucketSizes,
     build_gap_specs,
     check_generated_item,
+    phrase_in_payload,
     compute_bucket_sizes,
     order_anti_adjacency,
     plan_slot_types,
@@ -160,9 +163,10 @@ def test_check_rejects_an_invalid_payload():
 
 def test_check_rejects_kanji_above_level_one():
     above = {**READING, "sentence": "わたしは 医者です。", "focus": "医者", "options": ["いしゃ", "いし", "いっしゃ", "えしゃ"]}
-    payload, reason = check_generated_item(JA, _spec("kanji_reading", difficulty=1), _item(above), LANGS)
+    translations = (("ja", "わたしは 医者です。"), ("it", "Sono un medico."))
+    payload, reason = check_generated_item(JA, _spec("kanji_reading", difficulty=1), _item(above, translations), LANGS)
     assert payload is None and "above level 1" in reason
-    payload, reason = check_generated_item(JA, _spec("kanji_reading", difficulty=3), _item(above), LANGS)
+    payload, reason = check_generated_item(JA, _spec("kanji_reading", difficulty=3), _item(above, translations), LANGS)
     assert reason is None
 
 
@@ -253,3 +257,36 @@ def test_order_anti_adjacency_preserves_all_items():
     ordered = order_anti_adjacency(exercises)
     assert {e.id for e in ordered} == {e.id for e in exercises}
     assert len(ordered) == len(exercises)
+
+
+def test_check_rejects_a_phrase_unrelated_to_the_exercise():
+    # Seen in a real draft: the question is about one sentence, the stored phrase is another.
+    unrelated = {
+        "question": "Quale frase significa «Anche io sono Maria»?",
+        "options": ["私もマリアです。", "私のマリアです。", "私をマリアです。", "私にマリアです。"], "correct_index": 0,
+    }
+    translations = (("ja", "私は水を二本のみます。"), ("it", "Bevo due bottiglie d'acqua."))
+    payload, reason = check_generated_item(JA, _spec("multiple_choice", difficulty=3), _item(unrelated, translations), LANGS)
+    assert payload is None and "does not match" in reason
+
+
+@pytest.mark.parametrize("payload, phrase", [
+    # the blank in the question, filled with the correct option
+    ({"question": "Completa: 「これは私＿本です。」", "options": ["の", "も", "を", "に"], "correct_index": 0}, "これは私の本です。"),
+    # the sentence quoted in the question, its translation as the answer
+    ({"question": "Che cosa significa «毎日、水を飲みます。»?", "options": ["Bevo acqua ogni giorno.", "b", "c", "d"], "correct_index": 0},
+     "毎日、水を飲みます。"),
+    # the sentence is the correct option
+    ({"question": "Quale frase significa «Anche io sono Maria»?", "options": ["私もマリアです。", "b", "c", "d"], "correct_index": 0},
+     "私もマリアです"),
+    ({"sentence_with_blank": "田中さん___学生です。", "options": ["も", "の"], "correct": "も"}, "田中さんも 学生です。"),
+    ({"prompt": "わたしは 学生です。", "expected": "Sono uno studente."}, "わたしは学生です"),
+    (READING, "わたしは　学生です"),   # spaces and punctuation ignored
+])
+def test_phrase_found_in_the_payload(payload, phrase):
+    assert phrase_in_payload(payload, [phrase])
+
+
+def test_phrase_not_found_when_only_the_options_mention_it():
+    payload = {"question": "Quale è giusta?", "options": ["私は学生です。", "b", "c", "d"], "correct_index": 1}
+    assert not phrase_in_payload(payload, ["私は学生です。"])
